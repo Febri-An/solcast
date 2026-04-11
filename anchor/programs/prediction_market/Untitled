@@ -1,0 +1,1 @@
+npm install --save @pythnetwork/hermes-client @pythnetwork/pyth-solana-receiver
