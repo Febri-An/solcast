@@ -10,4 +10,3 @@ export * from "./claimWinnings";
 export * from "./createMarket";
 export * from "./placeBet";
 export * from "./resolveMarket";
-export * from "./sample";

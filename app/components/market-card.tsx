@@ -203,7 +203,7 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
   const now = Date.now() / 1000;
   const resolutionTime = Number(market.resolutionTime);
   const canBet = !isResolved && now < resolutionTime;
-  const canResolve = !isResolved && now >= resolutionTime && isCreator;
+  const canResolve = !isResolved && now >= resolutionTime;
 
   const totalPool = market.yesPool + market.noPool;
   const yesPercent = totalPool > 0n ? Number((market.yesPool * 100n) / totalPool) : 50;
@@ -236,7 +236,7 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
     }
   }, [wallet, walletAddress, marketAddress, betAmount, send, onUpdate]);
 
-  const handleResolve = useCallback(async (outcome: boolean) => {
+  const handleResolve = useCallback(async () => {
     if (!wallet || !walletAddress) return;
 
     try {
@@ -251,7 +251,7 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
         connection,
         anchorWallet,
         marketAddress,
-        outcome,
+        market.feedId,
       );
 
       const lastSig = signatures[signatures.length - 1];
@@ -265,7 +265,7 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
     } finally {
       setIsResolving(false);
     }
-  }, [wallet, walletAddress, marketAddress, onUpdate]);
+  }, [wallet, walletAddress, marketAddress, market.feedId, onUpdate]);
 
   const handleClaim = useCallback(async () => {
     if (!wallet || !walletAddress) return;
@@ -357,23 +357,16 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
 
       {status === "connected" && canResolve && (
         <div className="border-t border-border-low p-3 bg-amber-50">
-          <p className="text-xs text-amber-700 mb-2">You can now resolve this market</p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleResolve(true)}
-              disabled={isSending || isResolving}
-              className="flex-1 rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-green-700 disabled:opacity-40"
-            >
-              {isResolving ? "Resolving..." : "Yes Won"}
-            </button>
-            <button
-              onClick={() => handleResolve(false)}
-              disabled={isSending || isResolving}
-              className="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-40"
-            >
-              {isResolving ? "Resolving..." : "No Won"}
-            </button>
-          </div>
+          <p className="text-xs text-amber-700 mb-2">
+            Deadline passed — resolve with live Pyth price
+          </p>
+          <button
+            onClick={handleResolve}
+            disabled={isSending || isResolving}
+            className="w-full rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-amber-700 disabled:opacity-40"
+          >
+            {isResolving ? "Fetching price & resolving..." : "Resolve Market"}
+          </button>
         </div>
       )}
 

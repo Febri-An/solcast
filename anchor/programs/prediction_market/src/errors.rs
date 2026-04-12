@@ -20,4 +20,6 @@ pub enum MarketError {
     NoWinnings,
     #[msg("Arithmetic overflow")]
     Overflow,
+    #[msg("Target price must be greater than zero")]
+    InvalidTargetPrice,
 }

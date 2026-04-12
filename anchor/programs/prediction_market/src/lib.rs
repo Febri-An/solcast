@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::{transfer, Transfer};
-use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, PriceUpdateV2};
+use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
 mod errors;
 mod state;
@@ -18,14 +18,16 @@ declare_id!("DYy72hMhhyHvbPjy71pp4137U4FumNuzM6i3mLVU2MWk");
 pub mod prediction_market {
     use super::*;
 
-    /// Create a new prediction market
     pub fn create_market(
         ctx: Context<CreateMarket>,
         market_id: u64,
         question: String,
         resolution_time: i64,
+        feed_id: [u8; 32],
+        target_price: i64,
     ) -> Result<()> {
         require!(question.len() <= MAX_QUESTION_LEN, MarketError::Overflow);
+        require!(target_price > 0, MarketError::InvalidTargetPrice);
 
         let clock = Clock::get()?;
         require!(
@@ -38,6 +40,8 @@ pub mod prediction_market {
         market.market_id = market_id;
         market.question = question;
         market.resolution_time = resolution_time;
+        market.feed_id = feed_id;
+        market.target_price = target_price;
         market.yes_pool = 0;
         market.no_pool = 0;
         market.resolved = false;
@@ -47,7 +51,6 @@ pub mod prediction_market {
         Ok(())
     }
 
-    /// Place a bet on YES or NO
     pub fn place_bet(ctx: Context<PlaceBet>, amount: u64, bet_yes: bool) -> Result<()> {
         require!(amount > 0, MarketError::InvalidBetAmount);
 
@@ -58,7 +61,6 @@ pub mod prediction_market {
             MarketError::BettingClosed
         );
 
-        // Transfer SOL from user to market PDA
         transfer(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
@@ -70,7 +72,6 @@ pub mod prediction_market {
             amount,
         )?;
 
-        // Update market pools
         let market = &mut ctx.accounts.market;
         if bet_yes {
             market.yes_pool = market.yes_pool.checked_add(amount).ok_or(MarketError::Overflow)?;
@@ -78,12 +79,10 @@ pub mod prediction_market {
             market.no_pool = market.no_pool.checked_add(amount).ok_or(MarketError::Overflow)?;
         }
 
-        // Update user position - set initial values only if not already set
         let position = &mut ctx.accounts.user_position;
         if position.market == Pubkey::default() {
             position.market = market.key();
             position.user = ctx.accounts.user.key();
-            // Calculate bump for the position PDA
             let (_, bump) = Pubkey::find_program_address(
                 &[b"position", market.key().as_ref(), ctx.accounts.user.key().as_ref()],
                 ctx.program_id,
@@ -106,8 +105,10 @@ pub mod prediction_market {
         Ok(())
     }
 
-    /// Resolve the market with the winning outcome
-    pub fn resolve_market(ctx: Context<ResolveMarket>, outcome: bool) -> Result<()> {
+    /// Permissionless resolve: anyone can trigger after deadline.
+    /// Outcome is determined automatically by comparing the Pyth price
+    /// against the market's target_price.
+    pub fn resolve_market(ctx: Context<ResolveMarket>) -> Result<()> {
         let clock = Clock::get()?;
         let market = &ctx.accounts.market;
 
@@ -117,16 +118,30 @@ pub mod prediction_market {
         );
         require!(!market.resolved, MarketError::AlreadyResolved);
 
-        let price_update = &mut ctx.accounts.price_update;
-        // get_price_no_older_than will fail if the price update is more than 30 seconds old
+        let price_update = &ctx.accounts.price_update;
         let maximum_age: u64 = 30;
-        // get_price_no_older_than will fail if the price update is for a different price feed.
-        // This string is the id of the BTC/USD feed. See https://docs.pyth.network/price-feeds/price-feeds for all available IDs.
-        let feed_id: [u8; 32] = get_feed_id_from_hex("0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43")?;
-        let price = price_update.get_price_no_older_than(&Clock::get()?, maximum_age, &feed_id)?;
-        // Sample output:
-        // The price is (7160106530699 ± 5129162301) * 10^-8
-        msg!("The price is ({} ± {}) * 10^{}", price.price, price.conf, price.exponent);
+        let price = price_update.get_price_no_older_than(&clock, maximum_age, &market.feed_id)?;
+
+        // Scale target_price (whole USD) to match Pyth's fixed-point representation.
+        // Pyth prices use a negative exponent, e.g. price=7337436924469 exp=-8 → $73,374.37
+        let neg_exp = (-price.exponent) as u32;
+        let target_scaled = (market.target_price as i128)
+            .checked_mul(
+                10i128
+                    .checked_pow(neg_exp)
+                    .ok_or(MarketError::Overflow)?,
+            )
+            .ok_or(MarketError::Overflow)?;
+
+        let outcome = (price.price as i128) > target_scaled;
+
+        msg!(
+            "Resolve: price={} * 10^{}, target=${}, outcome={}",
+            price.price,
+            price.exponent,
+            market.target_price,
+            if outcome { "YES" } else { "NO" }
+        );
 
         let market = &mut ctx.accounts.market;
         market.resolved = true;
@@ -135,7 +150,6 @@ pub mod prediction_market {
         Ok(())
     }
 
-    /// Claim winnings after market resolution
     pub fn claim_winnings(ctx: Context<ClaimWinnings>) -> Result<()> {
         let market = &ctx.accounts.market;
         let position = &ctx.accounts.user_position;
@@ -145,7 +159,6 @@ pub mod prediction_market {
 
         let outcome = market.outcome.unwrap();
 
-        // Calculate winnings
         let (user_winning_bet, total_winning_pool, total_losing_pool) = if outcome {
             (position.yes_amount, market.yes_pool, market.no_pool)
         } else {
@@ -154,8 +167,6 @@ pub mod prediction_market {
 
         require!(user_winning_bet > 0, MarketError::NoWinnings);
 
-        // Calculate payout: original bet + share of losing pool
-        // winnings = (user_bet / winning_pool) * losing_pool
         let winnings = (user_winning_bet as u128)
             .checked_mul(total_losing_pool as u128)
             .ok_or(MarketError::Overflow)?
@@ -166,33 +177,15 @@ pub mod prediction_market {
             .checked_add(winnings)
             .ok_or(MarketError::Overflow)?;
 
-        // Transfer lamports directly from market PDA to user
-        // (Cannot use system_program::transfer because market account is program-owned)
         let market_account_info = ctx.accounts.market.to_account_info();
         let user_account_info = ctx.accounts.user.to_account_info();
 
         **market_account_info.try_borrow_mut_lamports()? -= total_payout;
         **user_account_info.try_borrow_mut_lamports()? += total_payout;
 
-        // Mark as claimed
         let position = &mut ctx.accounts.user_position;
         position.claimed = true;
 
-        Ok(())
-    }
-
-    pub fn sample(ctx: Context<Sample>) -> Result<()> {
-        let price_update = &mut ctx.accounts.price_update;
-        // get_price_no_older_than will fail if the price update is more than 30 seconds old
-        let maximum_age: u64 = 30;
-        // get_price_no_older_than will fail if the price update is for a different price feed.
-        // This string is the id of the BTC/USD feed. See https://docs.pyth.network/price-feeds/price-feeds for all available IDs.
-        let feed_id: [u8; 32] = get_feed_id_from_hex("0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43")?;
-        let price = price_update.get_price_no_older_than(&Clock::get()?, maximum_age, &feed_id)?;
-        // Sample output:
-        // The price is (7160106530699 ± 5129162301) * 10^-8
-        msg!("The price is ({} ± {}) * 10^{}", price.price, price.conf, price.exponent);
-    
         Ok(())
     }
 }
@@ -237,10 +230,8 @@ pub struct PlaceBet<'info> {
 
 #[derive(Accounts)]
 pub struct ResolveMarket<'info> {
-    #[account(
-        constraint = creator.key() == market.creator
-    )]
-    pub creator: Signer<'info>,
+    /// Anyone can resolve a market after the deadline.
+    pub resolver: Signer<'info>,
 
     #[account(mut)]
     pub market: Account<'info, Market>,
@@ -266,11 +257,4 @@ pub struct ClaimWinnings<'info> {
         constraint = user_position.user == user.key(),
     )]
     pub user_position: Account<'info, UserPosition>,
-}
-
-#[derive(Accounts)]
-pub struct Sample<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    pub price_update: Account<'info, PriceUpdateV2>,
 }

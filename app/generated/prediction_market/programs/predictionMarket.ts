@@ -18,7 +18,6 @@ import {
   type ParsedCreateMarketInstruction,
   type ParsedPlaceBetInstruction,
   type ParsedResolveMarketInstruction,
-  type ParsedSampleInstruction,
 } from "../instructions";
 
 export const PREDICTION_MARKET_PROGRAM_ADDRESS =
@@ -77,7 +76,6 @@ export enum PredictionMarketInstruction {
   CreateMarket,
   PlaceBet,
   ResolveMarket,
-  Sample,
 }
 
 export function identifyPredictionMarketInstruction(
@@ -128,17 +126,6 @@ export function identifyPredictionMarketInstruction(
   ) {
     return PredictionMarketInstruction.ResolveMarket;
   }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([70, 65, 102, 239, 199, 157, 60, 198]),
-      ),
-      0,
-    )
-  ) {
-    return PredictionMarketInstruction.Sample;
-  }
   throw new Error(
     "The provided instruction could not be identified as a predictionMarket instruction.",
   );
@@ -158,7 +145,4 @@ export type ParsedPredictionMarketInstruction<
     } & ParsedPlaceBetInstruction<TProgram>)
   | ({
       instructionType: PredictionMarketInstruction.ResolveMarket;
-    } & ParsedResolveMarketInstruction<TProgram>)
-  | ({
-      instructionType: PredictionMarketInstruction.Sample;
-    } & ParsedSampleInstruction<TProgram>);
+    } & ParsedResolveMarketInstruction<TProgram>);

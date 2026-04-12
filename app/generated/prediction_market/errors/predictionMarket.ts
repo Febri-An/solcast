@@ -32,12 +32,15 @@ export const PREDICTION_MARKET_ERROR__ALREADY_CLAIMED = 0x1776; // 6006
 export const PREDICTION_MARKET_ERROR__NO_WINNINGS = 0x1777; // 6007
 /** Overflow: Arithmetic overflow */
 export const PREDICTION_MARKET_ERROR__OVERFLOW = 0x1778; // 6008
+/** InvalidTargetPrice: Target price must be greater than zero */
+export const PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE = 0x1779; // 6009
 
 export type PredictionMarketError =
   | typeof PREDICTION_MARKET_ERROR__ALREADY_CLAIMED
   | typeof PREDICTION_MARKET_ERROR__ALREADY_RESOLVED
   | typeof PREDICTION_MARKET_ERROR__BETTING_CLOSED
   | typeof PREDICTION_MARKET_ERROR__INVALID_BET_AMOUNT
+  | typeof PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE
   | typeof PREDICTION_MARKET_ERROR__NOT_RESOLVED
   | typeof PREDICTION_MARKET_ERROR__NO_WINNINGS
   | typeof PREDICTION_MARKET_ERROR__OVERFLOW
@@ -53,6 +56,7 @@ if (process.env.NODE_ENV !== "production") {
     [PREDICTION_MARKET_ERROR__ALREADY_RESOLVED]: `Market has already been resolved`,
     [PREDICTION_MARKET_ERROR__BETTING_CLOSED]: `Betting is closed for this market`,
     [PREDICTION_MARKET_ERROR__INVALID_BET_AMOUNT]: `Bet amount must be greater than zero`,
+    [PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE]: `Target price must be greater than zero`,
     [PREDICTION_MARKET_ERROR__NOT_RESOLVED]: `Market has not been resolved yet`,
     [PREDICTION_MARKET_ERROR__NO_WINNINGS]: `No winnings to claim`,
     [PREDICTION_MARKET_ERROR__OVERFLOW]: `Arithmetic overflow`,

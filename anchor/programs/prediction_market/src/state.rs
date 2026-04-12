@@ -7,24 +7,21 @@ pub const MAX_QUESTION_LEN: usize = 200;
 #[account]
 #[derive(InitSpace)]
 pub struct Market {
-    /// Creator who can resolve the market
     pub creator: Pubkey,
-    /// Unique market ID (per creator)
     pub market_id: u64,
-    /// The prediction question
     #[max_len(MAX_QUESTION_LEN)]
     pub question: String,
-    /// Unix timestamp when betting closes and resolution can occur
     pub resolution_time: i64,
-    /// Total lamports bet on YES
+    /// Pyth price feed identifier (e.g. BTC/USD, SOL/USD)
+    pub feed_id: [u8; 32],
+    /// Target price in whole USD (e.g. 79000 = $79,000). YES = price above target.
+    pub target_price: i64,
     pub yes_pool: u64,
-    /// Total lamports bet on NO
     pub no_pool: u64,
     /// Whether the market has been resolved
     pub resolved: bool,
-    /// The winning outcome (None until resolved, Some(true) = YES won)
+    /// Some(true) = price was above target (YES won)
     pub outcome: Option<bool>,
-    /// PDA bump seed
     pub bump: u8,
 }
 

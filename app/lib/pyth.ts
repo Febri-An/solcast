@@ -4,10 +4,8 @@
  * Implements the "Price Update Account" flow:
  *   1. Fetch latest price data from Hermes (Pyth's off-chain API)
  *   2. Post the price update to Solana via the Pyth Receiver program
- *   3. Invoke our resolve_market instruction with the price update account
- *
- * All three steps are bundled into versioned transactions by the Pyth SDK
- * and sent in sequence.
+ *   3. Invoke resolve_market — outcome is determined automatically on-chain
+ *      by comparing the Pyth price against the market's stored target_price.
  */
 
 import { HermesClient } from "@pythnetwork/hermes-client";
@@ -15,9 +13,6 @@ import { PythSolanaReceiver } from "@pythnetwork/pyth-solana-receiver";
 import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import type { Connection } from "@solana/web3.js";
 import type { Wallet } from "@coral-xyz/anchor";
-
-export const BTC_USD_FEED_ID =
-  "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43";
 
 const HERMES_URL = "https://hermes.pyth.network/";
 const PREDICTION_MARKET_PROGRAM_ID = new PublicKey(
@@ -27,28 +22,35 @@ const RESOLVE_MARKET_DISCRIMINATOR = Buffer.from([
   155, 23, 80, 173, 46, 74, 23, 239,
 ]);
 
-export async function fetchPriceUpdateData(): Promise<string[]> {
+function feedIdBytesToHex(feedId: ArrayLike<number>): string {
+  return (
+    "0x" +
+    Array.from(feedId)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+
+async function fetchPriceUpdateData(feedIdHex: string): Promise<string[]> {
   const hermes = new HermesClient(HERMES_URL);
-  const result = await hermes.getLatestPriceUpdates([BTC_USD_FEED_ID], {
+  const result = await hermes.getLatestPriceUpdates([feedIdHex], {
     encoding: "base64",
   });
   return result.binary.data;
 }
 
 function buildResolveMarketIx(
-  creator: PublicKey,
+  resolver: PublicKey,
   market: PublicKey,
   priceUpdate: PublicKey,
-  outcome: boolean,
 ): TransactionInstruction {
-  const data = Buffer.alloc(9);
-  RESOLVE_MARKET_DISCRIMINATOR.copy(data, 0);
-  data.writeUInt8(outcome ? 1 : 0, 8);
+  // resolve_market has no args (outcome is determined on-chain), only the discriminator
+  const data = RESOLVE_MARKET_DISCRIMINATOR;
 
   return new TransactionInstruction({
     programId: PREDICTION_MARKET_PROGRAM_ID,
     keys: [
-      { pubkey: creator, isSigner: true, isWritable: false },
+      { pubkey: resolver, isSigner: true, isWritable: false },
       { pubkey: market, isSigner: false, isWritable: true },
       { pubkey: priceUpdate, isSigner: false, isWritable: false },
     ],
@@ -59,20 +61,21 @@ function buildResolveMarketIx(
 /**
  * Resolve a prediction market using a verified Pyth price update.
  *
- * Fetches the latest BTC/USD price from Hermes, posts it on-chain via the
- * Pyth Receiver program, then invokes `resolve_market` on the prediction
- * market program with that price update account.
+ * Fetches the latest price for the market's feed from Hermes, posts it
+ * on-chain via the Pyth Receiver program, then invokes resolve_market.
+ * The on-chain program compares the Pyth price against the market's
+ * target_price and sets outcome automatically.
  *
- * Returns an array of transaction signatures (posting price data may require
- * multiple transactions).
+ * @param feedId - The market's Pyth feed ID (32 bytes, from market.feedId)
  */
 export async function resolveMarketWithPyth(
   connection: Connection,
   wallet: Wallet,
   marketAddress: string,
-  outcome: boolean,
+  feedId: ArrayLike<number>,
 ): Promise<string[]> {
-  const priceUpdateData = await fetchPriceUpdateData();
+  const feedIdHex = feedIdBytesToHex(feedId);
+  const priceUpdateData = await fetchPriceUpdateData(feedIdHex);
 
   const pythReceiver = new PythSolanaReceiver({ connection, wallet });
   const txBuilder = pythReceiver.newTransactionBuilder({
@@ -83,12 +86,11 @@ export async function resolveMarketWithPyth(
 
   await txBuilder.addPriceConsumerInstructions(
     async (getPriceUpdateAccount) => {
-      const priceUpdatePubkey = getPriceUpdateAccount(BTC_USD_FEED_ID);
+      const priceUpdatePubkey = getPriceUpdateAccount(feedIdHex);
       const ix = buildResolveMarketIx(
         wallet.publicKey,
         new PublicKey(marketAddress),
         priceUpdatePubkey,
-        outcome,
       );
       return [{ instruction: ix, signers: [] }];
     },

@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 
 import { useSendTransaction, useWalletConnection } from "@solana/react-hooks";
 
@@ -10,29 +10,77 @@ interface CreateMarketFormProps {
   onCreated?: () => void;
 }
 
-const PLACEHOLDER_QUESTION = "Will SOL hit $200 this month?";
 const SECONDS_PER_MINUTE = 60;
 const MILLISECONDS_PER_SECOND = 1000;
 
-export function CreateMarketForm({ onCreated }: CreateMarketFormProps): ReactNode {
+interface PriceFeed {
+  label: string;
+  symbol: string;
+  feedId: string;
+}
+
+const PRICE_FEEDS: PriceFeed[] = [
+  {
+    label: "Bitcoin",
+    symbol: "BTC",
+    feedId:
+      "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+  },
+  {
+    label: "Solana",
+    symbol: "SOL",
+    feedId:
+      "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+  },
+  {
+    label: "Ethereum",
+    symbol: "ETH",
+    feedId:
+      "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+  },
+];
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function formatUsd(value: number): string {
+  return value.toLocaleString("en-US", {
+    maximumFractionDigits: 0,
+  });
+}
+
+export function CreateMarketForm({
+  onCreated,
+}: CreateMarketFormProps): ReactNode {
   const { wallet, status } = useWalletConnection();
   const { send, isSending } = useSendTransaction();
 
-  const [question, setQuestion] = useState("");
+  const [selectedFeed, setSelectedFeed] = useState(PRICE_FEEDS[0].feedId);
+  const [targetPrice, setTargetPrice] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("5");
   const [txStatus, setTxStatus] = useState<string | null>(null);
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
-    if (e.key === "Tab" && !question) {
-      e.preventDefault();
-      setQuestion(PLACEHOLDER_QUESTION);
-    }
-  }
-
   const walletAddress = wallet?.account.address;
 
+  const feed = useMemo(
+    () => PRICE_FEEDS.find((f) => f.feedId === selectedFeed) ?? PRICE_FEEDS[0],
+    [selectedFeed],
+  );
+
+  const priceNum = parseFloat(targetPrice);
+  const isValidPrice = !isNaN(priceNum) && priceNum > 0;
+
+  const question = isValidPrice
+    ? `Will ${feed.symbol} be above $${formatUsd(priceNum)}?`
+    : "";
+
   const handleCreate = useCallback(async () => {
-    if (!wallet || !walletAddress || !question.trim()) return;
+    if (!wallet || !walletAddress || !isValidPrice) return;
 
     try {
       setTxStatus("Creating market...");
@@ -42,17 +90,21 @@ export function CreateMarketForm({ onCreated }: CreateMarketFormProps): ReactNod
       const durationInSeconds = parseInt(durationMinutes) * SECONDS_PER_MINUTE;
       const resolutionTime = BigInt(nowInSeconds + durationInSeconds);
 
+      const feedIdBytes = hexToBytes(feed.feedId);
+
       const instruction = await getCreateMarketInstructionAsync({
         creator: wallet.account,
         marketId,
-        question: question.trim(),
+        question,
         resolutionTime,
+        feedId: feedIdBytes,
+        targetPrice: BigInt(Math.floor(priceNum)),
       });
 
       const signature = await send({ instructions: [instruction] });
 
       setTxStatus(`Created! ${signature?.slice(0, 8)}...`);
-      setQuestion("");
+      setTargetPrice("");
       setTimeout(() => {
         setTxStatus(null);
         onCreated?.();
@@ -62,36 +114,76 @@ export function CreateMarketForm({ onCreated }: CreateMarketFormProps): ReactNod
       const message = err instanceof Error ? err.message : "Unknown error";
       setTxStatus(`Error: ${message}`);
     }
-  }, [wallet, walletAddress, question, durationMinutes, send, onCreated]);
+  }, [
+    wallet,
+    walletAddress,
+    isValidPrice,
+    durationMinutes,
+    feed,
+    question,
+    priceNum,
+    send,
+    onCreated,
+  ]);
 
   if (status !== "connected") {
     return (
       <div className="rounded-xl border border-border-low bg-card p-4">
-        <p className="text-sm text-muted text-center">Connect your wallet to create a market</p>
+        <p className="text-sm text-muted text-center">
+          Connect your wallet to create a market
+        </p>
       </div>
     );
   }
 
   return (
     <div className="rounded-xl border border-border-low bg-card p-4 space-y-4">
-      <div>
-        <label className="block text-xs font-medium text-muted mb-1.5">Question (yes/no)</label>
-        <input
-          type="text"
-          placeholder={PLACEHOLDER_QUESTION}
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={isSending}
-          maxLength={200}
-          className="w-full rounded-md border border-border-low bg-card px-3 py-2 text-sm outline-none placeholder:text-muted/60 focus:border-foreground/30 disabled:opacity-60"
-        />
-        <p className="text-xs text-muted/50 mt-1">Press Tab to use suggestion</p>
+      <div className="flex gap-3">
+        <div className="flex-1">
+          <label className="block text-xs font-medium text-muted mb-1.5">
+            Asset
+          </label>
+          <select
+            value={selectedFeed}
+            onChange={(e) => setSelectedFeed(e.target.value)}
+            disabled={isSending}
+            className="w-full rounded-md border border-border-low bg-card px-3 py-2 text-sm outline-none focus:border-foreground/30 disabled:opacity-60"
+          >
+            {PRICE_FEEDS.map((f) => (
+              <option key={f.feedId} value={f.feedId}>
+                {f.label} ({f.symbol}/USD)
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex-1">
+          <label className="block text-xs font-medium text-muted mb-1.5">
+            Target Price (USD)
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            placeholder="e.g. 80000"
+            value={targetPrice}
+            onChange={(e) => setTargetPrice(e.target.value)}
+            disabled={isSending}
+            className="w-full rounded-md border border-border-low bg-card px-3 py-2 text-sm outline-none placeholder:text-muted/60 focus:border-foreground/30 disabled:opacity-60"
+          />
+        </div>
       </div>
+
+      {question && (
+        <p className="text-sm font-medium">
+          {question}
+        </p>
+      )}
 
       <div className="flex gap-3">
         <div className="flex-1">
-          <label className="block text-xs font-medium text-muted mb-1.5">Betting ends in</label>
+          <label className="block text-xs font-medium text-muted mb-1.5">
+            Betting ends in
+          </label>
           <select
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(e.target.value)}
@@ -108,7 +200,7 @@ export function CreateMarketForm({ onCreated }: CreateMarketFormProps): ReactNod
         <div className="flex items-end">
           <button
             onClick={handleCreate}
-            disabled={isSending || !question.trim()}
+            disabled={isSending || !isValidPrice}
             className="rounded-md bg-foreground px-6 py-2 text-sm font-medium text-background transition hover:opacity-90 disabled:opacity-40"
           >
             {isSending ? "..." : "Create"}
@@ -116,9 +208,7 @@ export function CreateMarketForm({ onCreated }: CreateMarketFormProps): ReactNod
         </div>
       </div>
 
-      {txStatus && (
-        <p className="text-xs text-muted">{txStatus}</p>
-      )}
+      {txStatus && <p className="text-xs text-muted">{txStatus}</p>}
     </div>
   );
 }

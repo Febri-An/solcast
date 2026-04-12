@@ -90,12 +90,16 @@ export type CreateMarketInstructionData = {
   marketId: bigint;
   question: string;
   resolutionTime: bigint;
+  feedId: ReadonlyUint8Array;
+  targetPrice: bigint;
 };
 
 export type CreateMarketInstructionDataArgs = {
   marketId: number | bigint;
   question: string;
   resolutionTime: number | bigint;
+  feedId: ReadonlyUint8Array;
+  targetPrice: number | bigint;
 };
 
 export function getCreateMarketInstructionDataEncoder(): Encoder<CreateMarketInstructionDataArgs> {
@@ -105,6 +109,8 @@ export function getCreateMarketInstructionDataEncoder(): Encoder<CreateMarketIns
       ["marketId", getU64Encoder()],
       ["question", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
       ["resolutionTime", getI64Encoder()],
+      ["feedId", fixEncoderSize(getBytesEncoder(), 32)],
+      ["targetPrice", getI64Encoder()],
     ]),
     (value) => ({ ...value, discriminator: CREATE_MARKET_DISCRIMINATOR }),
   );
@@ -116,6 +122,8 @@ export function getCreateMarketInstructionDataDecoder(): Decoder<CreateMarketIns
     ["marketId", getU64Decoder()],
     ["question", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
     ["resolutionTime", getI64Decoder()],
+    ["feedId", fixDecoderSize(getBytesDecoder(), 32)],
+    ["targetPrice", getI64Decoder()],
   ]);
 }
 
@@ -140,6 +148,8 @@ export type CreateMarketAsyncInput<
   marketId: CreateMarketInstructionDataArgs["marketId"];
   question: CreateMarketInstructionDataArgs["question"];
   resolutionTime: CreateMarketInstructionDataArgs["resolutionTime"];
+  feedId: CreateMarketInstructionDataArgs["feedId"];
+  targetPrice: CreateMarketInstructionDataArgs["targetPrice"];
 };
 
 export async function getCreateMarketInstructionAsync<
@@ -226,6 +236,8 @@ export type CreateMarketInput<
   marketId: CreateMarketInstructionDataArgs["marketId"];
   question: CreateMarketInstructionDataArgs["question"];
   resolutionTime: CreateMarketInstructionDataArgs["resolutionTime"];
+  feedId: CreateMarketInstructionDataArgs["feedId"];
+  targetPrice: CreateMarketInstructionDataArgs["targetPrice"];
 };
 
 export function getCreateMarketInstruction<

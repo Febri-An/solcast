@@ -63,44 +63,36 @@ export function getMarketDiscriminatorBytes() {
 
 export type Market = {
   discriminator: ReadonlyUint8Array;
-  /** Creator who can resolve the market */
   creator: Address;
-  /** Unique market ID (per creator) */
   marketId: bigint;
-  /** The prediction question */
   question: string;
-  /** Unix timestamp when betting closes and resolution can occur */
   resolutionTime: bigint;
-  /** Total lamports bet on YES */
+  /** Pyth price feed identifier (e.g. BTC/USD, SOL/USD) */
+  feedId: ReadonlyUint8Array;
+  /** Target price in whole USD (e.g. 79000 = $79,000). YES = price above target. */
+  targetPrice: bigint;
   yesPool: bigint;
-  /** Total lamports bet on NO */
   noPool: bigint;
-  /** Whether the market has been resolved */
   resolved: boolean;
-  /** The winning outcome (None until resolved, Some(true) = YES won) */
+  /** Some(true) = price was above target (YES won) */
   outcome: Option<boolean>;
-  /** PDA bump seed */
   bump: number;
 };
 
 export type MarketArgs = {
-  /** Creator who can resolve the market */
   creator: Address;
-  /** Unique market ID (per creator) */
   marketId: number | bigint;
-  /** The prediction question */
   question: string;
-  /** Unix timestamp when betting closes and resolution can occur */
   resolutionTime: number | bigint;
-  /** Total lamports bet on YES */
+  /** Pyth price feed identifier (e.g. BTC/USD, SOL/USD) */
+  feedId: ReadonlyUint8Array;
+  /** Target price in whole USD (e.g. 79000 = $79,000). YES = price above target. */
+  targetPrice: number | bigint;
   yesPool: number | bigint;
-  /** Total lamports bet on NO */
   noPool: number | bigint;
-  /** Whether the market has been resolved */
   resolved: boolean;
-  /** The winning outcome (None until resolved, Some(true) = YES won) */
+  /** Some(true) = price was above target (YES won) */
   outcome: OptionOrNullable<boolean>;
-  /** PDA bump seed */
   bump: number;
 };
 
@@ -113,6 +105,8 @@ export function getMarketEncoder(): Encoder<MarketArgs> {
       ["marketId", getU64Encoder()],
       ["question", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
       ["resolutionTime", getI64Encoder()],
+      ["feedId", fixEncoderSize(getBytesEncoder(), 32)],
+      ["targetPrice", getI64Encoder()],
       ["yesPool", getU64Encoder()],
       ["noPool", getU64Encoder()],
       ["resolved", getBooleanEncoder()],
@@ -131,6 +125,8 @@ export function getMarketDecoder(): Decoder<Market> {
     ["marketId", getU64Decoder()],
     ["question", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
     ["resolutionTime", getI64Decoder()],
+    ["feedId", fixDecoderSize(getBytesDecoder(), 32)],
+    ["targetPrice", getI64Decoder()],
     ["yesPool", getU64Decoder()],
     ["noPool", getU64Decoder()],
     ["resolved", getBooleanDecoder()],
