@@ -5,6 +5,7 @@ import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { useSendTransaction, useWalletConnection } from "@solana/react-hooks";
 
 import { getCreateMarketInstructionAsync } from "../generated/prediction_market";
+import { useProfile } from "../hooks/use-profile";
 
 interface CreateMarketFormProps {
   onCreated?: () => void;
@@ -59,6 +60,7 @@ export function CreateMarketForm({
 }: CreateMarketFormProps): ReactNode {
   const { wallet, status } = useWalletConnection();
   const { send, isSending } = useSendTransaction();
+  const { isComplete: isProfileComplete, configured, openProfileModal } = useProfile();
 
   const [selectedFeed, setSelectedFeed] = useState(PRICE_FEEDS[0].feedId);
   const [targetPrice, setTargetPrice] = useState("");
@@ -81,6 +83,10 @@ export function CreateMarketForm({
 
   const handleCreate = useCallback(async () => {
     if (!wallet || !walletAddress || !isValidPrice) return;
+    if (configured && !isProfileComplete) {
+      setTxStatus("Set a username in your profile before creating a market.");
+      return;
+    }
 
     try {
       setTxStatus("Creating market...");
@@ -93,7 +99,8 @@ export function CreateMarketForm({
       const feedIdBytes = hexToBytes(feed.feedId);
 
       const instruction = await getCreateMarketInstructionAsync({
-        creator: wallet.account,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wallet adapter vs Codama signer types
+        creator: wallet.account as any,
         marketId,
         question,
         resolutionTime,
@@ -124,12 +131,14 @@ export function CreateMarketForm({
     priceNum,
     send,
     onCreated,
+    configured,
+    isProfileComplete,
   ]);
 
   if (status !== "connected") {
     return (
-      <div className="rounded-xl border border-border-low bg-card p-4">
-        <p className="text-sm text-muted text-center">
+      <div className="rounded-2xl border border-border-low bg-bg2 p-6 text-center">
+        <p className="text-sm text-muted">
           Connect your wallet to create a market
         </p>
       </div>
@@ -137,78 +146,102 @@ export function CreateMarketForm({
   }
 
   return (
-    <div className="rounded-xl border border-border-low bg-card p-4 space-y-4">
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <label className="block text-xs font-medium text-muted mb-1.5">
-            Asset
-          </label>
-          <select
-            value={selectedFeed}
-            onChange={(e) => setSelectedFeed(e.target.value)}
-            disabled={isSending}
-            className="w-full rounded-md border border-border-low bg-card px-3 py-2 text-sm outline-none focus:border-foreground/30 disabled:opacity-60"
-          >
-            {PRICE_FEEDS.map((f) => (
-              <option key={f.feedId} value={f.feedId}>
-                {f.label} ({f.symbol}/USD)
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex-1">
-          <label className="block text-xs font-medium text-muted mb-1.5">
-            Target Price (USD)
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            placeholder="e.g. 80000"
-            value={targetPrice}
-            onChange={(e) => setTargetPrice(e.target.value)}
-            disabled={isSending}
-            className="w-full rounded-md border border-border-low bg-card px-3 py-2 text-sm outline-none placeholder:text-muted/60 focus:border-foreground/30 disabled:opacity-60"
-          />
-        </div>
+    <div className="rounded-2xl border border-border-low bg-bg2 overflow-hidden animate-fade-in">
+      <div className="px-5 py-4 border-b border-border-low">
+        <h3 className="text-sm font-semibold text-foreground">Create New Market</h3>
+        <p className="text-xs text-muted mt-0.5">Set up a price prediction market powered by Pyth oracles</p>
       </div>
 
-      {question && (
-        <p className="text-sm font-medium">
-          {question}
-        </p>
-      )}
+      <div className="p-5 space-y-4">
+        {configured && !isProfileComplete && (
+          <div className="rounded-xl border border-amber/25 bg-amber-muted/50 px-4 py-3 text-sm text-amber">
+            <p className="font-medium text-foreground">Username required</p>
+            <p className="mt-1 text-xs text-muted leading-relaxed">
+              Choose a unique username in your profile to create markets and place bets.
+            </p>
+            <button
+              type="button"
+              onClick={() => openProfileModal("username")}
+              className="mt-3 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary-hover transition-colors"
+            >
+              Open profile settings
+            </button>
+          </div>
+        )}
 
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <label className="block text-xs font-medium text-muted mb-1.5">
-            Betting ends in
-          </label>
-          <select
-            value={durationMinutes}
-            onChange={(e) => setDurationMinutes(e.target.value)}
-            disabled={isSending}
-            className="w-full rounded-md border border-border-low bg-card px-3 py-2 text-sm outline-none focus:border-foreground/30 disabled:opacity-60"
-          >
-            <option value="2">2 minutes</option>
-            <option value="5">5 minutes</option>
-            <option value="60">1 hour</option>
-            <option value="1440">1 day</option>
-            <option value="10080">1 week</option>
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-foreground-secondary mb-1.5">
+              Asset
+            </label>
+            <select
+              value={selectedFeed}
+              onChange={(e) => setSelectedFeed(e.target.value)}
+              disabled={isSending}
+              className="w-full rounded-lg border border-border-low bg-bg3 px-3 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
+            >
+              {PRICE_FEEDS.map((f) => (
+                <option key={f.feedId} value={f.feedId}>
+                  {f.label} ({f.symbol}/USD)
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-foreground-secondary mb-1.5">
+              Target Price (USD)
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              placeholder="e.g. 80000"
+              value={targetPrice}
+              onChange={(e) => setTargetPrice(e.target.value)}
+              disabled={isSending}
+              className="w-full rounded-lg border border-border-low bg-bg3 px-3 py-2.5 text-sm font-mono text-foreground outline-none placeholder:text-muted/50 transition-colors focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
+            />
+          </div>
         </div>
-        <div className="flex items-end">
+
+        {question && (
+          <div className="rounded-lg bg-primary/5 border border-primary/10 px-4 py-3">
+            <p className="text-xs text-muted mb-1">Market question</p>
+            <p className="text-sm font-semibold text-foreground">{question}</p>
+          </div>
+        )}
+
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-foreground-secondary mb-1.5">
+              Duration
+            </label>
+            <select
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(e.target.value)}
+              disabled={isSending}
+              className="w-full rounded-lg border border-border-low bg-bg3 px-3 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
+            >
+              <option value="2">2 minutes</option>
+              <option value="5">5 minutes</option>
+              <option value="60">1 hour</option>
+              <option value="1440">1 day</option>
+              <option value="10080">1 week</option>
+            </select>
+          </div>
           <button
             onClick={handleCreate}
-            disabled={isSending || !isValidPrice}
-            className="rounded-md bg-foreground px-6 py-2 text-sm font-medium text-background transition hover:opacity-90 disabled:opacity-40"
+            disabled={isSending || !isValidPrice || (configured && !isProfileComplete)}
+            className="rounded-lg bg-primary px-8 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:opacity-40"
           >
-            {isSending ? "..." : "Create"}
+            {isSending ? "Creating..." : "Create Market"}
           </button>
         </div>
-      </div>
 
-      {txStatus && <p className="text-xs text-muted">{txStatus}</p>}
+        {txStatus && (
+          <p className="text-xs text-muted font-mono">{txStatus}</p>
+        )}
+      </div>
     </div>
   );
 }
