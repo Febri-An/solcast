@@ -1,35 +1,16 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 
-import {
-  type Address,
-  type Option,
-  getAddressEncoder,
-  getBytesEncoder,
-  getProgramDerivedAddress,
-  isSome,
-} from "@solana/kit";
-import { useSendTransaction, useWalletConnection } from "@solana/react-hooks";
+import Link from "next/link";
 
-import {
-  getClaimWinningsInstructionAsync,
-  getPlaceBetInstructionAsync,
-  type Market,
-  PREDICTION_MARKET_PROGRAM_ADDRESS,
-} from "../generated/prediction_market";
-import { resolveMarketWithPyth } from "../lib/pyth";
-import { createAnchorWallet, getWeb3Connection } from "../lib/solana-compat";
-import {
-  getUserPositionDecoder,
-  type UserPosition,
-} from "../generated/prediction_market/accounts/userPosition";
+import { type Address, type Option, isSome } from "@solana/kit";
+import { useWalletConnection } from "@solana/react-hooks";
 
-const LAMPORTS_PER_SOL = 1_000_000_000n;
-const DEVNET_RPC_URL = "https://api.devnet.solana.com";
-const POSITION_SEED = new Uint8Array([112, 111, 115, 105, 116, 105, 111, 110]); // "position"
-const POLL_INTERVAL_MS = 3000;
-const STATUS_CLEAR_DELAY_MS = 3000;
+import { type Market } from "../generated/prediction_market";
+import { useMarketTrading } from "../hooks/use-market-trading";
+import { useProfile } from "../hooks/use-profile";
+import { formatSol, formatVolume, getTimeRemaining } from "../lib/market-format";
 
 interface MarketCardProps {
   market: Market;
@@ -37,352 +18,249 @@ interface MarketCardProps {
   onUpdate?: () => void;
 }
 
-function formatSol(lamports: bigint): string {
-  const sol = Number(lamports) / Number(LAMPORTS_PER_SOL);
-  if (sol < 0.01) return sol.toFixed(4);
-  return sol.toFixed(2);
-}
-
-function getTimeRemaining(resolutionTime: number): string {
-  const now = Date.now() / 1000;
-  const diff = resolutionTime - now;
-  if (diff <= 0) return "Ended";
-  if (diff < 60) return `${Math.floor(diff)}s left`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m left`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h left`;
-  return `${Math.floor(diff / 86400)}d left`;
-}
-
 function unwrapOutcome(option: Option<boolean>): boolean | null {
   return isSome(option) ? option.value : null;
 }
 
-function getStatusBadgeClass(isResolved: boolean, outcome: Option<boolean>, canBet: boolean): string {
-  if (isResolved) {
-    const val = unwrapOutcome(outcome);
-    return val ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700";
-  }
-  if (canBet) {
-    return "bg-emerald-100 text-emerald-700";
-  }
-  return "bg-amber-100 text-amber-700";
-}
-
-function getStatusBadgeText(
-  isResolved: boolean,
-  outcome: Option<boolean>,
-  canBet: boolean,
-  resolutionTime: number
-): string {
-  if (isResolved) {
-    const val = unwrapOutcome(outcome);
-    return val ? "YES" : "NO";
-  }
-  if (canBet) {
-    return getTimeRemaining(resolutionTime);
-  }
-  return "Pending";
-}
-
-async function fetchUserPositionFromRpc(
-  marketAddress: Address,
-  walletAddress: Address
-): Promise<UserPosition | null> {
-  const positionAddress = await getProgramDerivedAddress({
-    programAddress: PREDICTION_MARKET_PROGRAM_ADDRESS,
-    seeds: [
-      getBytesEncoder().encode(POSITION_SEED),
-      getAddressEncoder().encode(marketAddress),
-      getAddressEncoder().encode(walletAddress),
-    ],
-  });
-
-  const response = await fetch(DEVNET_RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "getAccountInfo",
-      params: [positionAddress[0], { encoding: "base64", commitment: "confirmed" }],
-    }),
-  });
-
-  const result = await response.json();
-
-  if (!result.result?.value) {
-    return null;
-  }
-
-  const data = Uint8Array.from(atob(result.result.value.data[0]), (c) => c.charCodeAt(0));
-  return getUserPositionDecoder().decode(data);
-}
-
-interface ClaimSectionProps {
-  status: string;
-  isResolved: boolean;
-  userPosition: UserPosition | null;
-  market: Market;
-  isSending: boolean;
-  onClaim: () => void;
-}
-
-function ClaimSection({
-  status,
-  isResolved,
-  userPosition,
-  market,
-  isSending,
-  onClaim,
-}: ClaimSectionProps): ReactNode {
-  if (status !== "connected" || !isResolved || !userPosition || userPosition.claimed) {
-    return null;
-  }
-
-  const outcome = unwrapOutcome(market.outcome);
-  if (outcome === null) {
-    return null;
-  }
-
-  const userWinningBet = outcome ? userPosition.yesAmount : userPosition.noAmount;
-  if (userWinningBet === 0n) {
-    return null;
-  }
-
-  const winningPool = outcome ? market.yesPool : market.noPool;
-  const losingPool = outcome ? market.noPool : market.yesPool;
-  const winnings = winningPool > 0n ? (userWinningBet * losingPool) / winningPool : 0n;
-  const totalPayout = userWinningBet + winnings;
-
-  return (
-    <div className="border-t border-border-low p-3 bg-green-50">
-      <button
-        onClick={onClaim}
-        disabled={isSending}
-        className="w-full rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-green-700 disabled:opacity-40"
-      >
-        {isSending ? "Claiming..." : `Claim ${formatSol(totalPayout)} SOL`}
-      </button>
-    </div>
-  );
-}
-
 export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps): ReactNode {
-  const { wallet, status } = useWalletConnection();
-  const { send, isSending } = useSendTransaction();
+  const { status } = useWalletConnection();
+  const { openProfileModal, configured: profileConfigured } = useProfile();
+  const [expanded, setExpanded] = useState(false);
 
-  const [betAmount, setBetAmount] = useState("");
-  const [txStatus, setTxStatus] = useState<string | null>(null);
-  const [userPosition, setUserPosition] = useState<UserPosition | null>(null);
-  const [isResolving, setIsResolving] = useState(false);
+  const {
+    isSending,
+    betAmount,
+    setBetAmount,
+    txStatus,
+    isResolving,
+    isResolved,
+    resolutionTime,
+    canBet,
+    canResolve,
+    totalPool,
+    yesPercent,
+    noPercent,
+    handlePlaceBet,
+    handleResolve,
+    handleClaim,
+    canClaim,
+    claimPayout,
+    isProfileComplete,
+  } = useMarketTrading(market, marketAddress, onUpdate);
 
-  const walletAddress = wallet?.account.address;
-
-  useEffect(() => {
-    async function fetchPosition(): Promise<void> {
-      if (!walletAddress) {
-        setUserPosition(null);
-        return;
-      }
-
-      try {
-        const position = await fetchUserPositionFromRpc(marketAddress, walletAddress);
-        setUserPosition(position);
-      } catch (err) {
-        console.warn("Failed to fetch user position:", err);
-        setUserPosition(null);
-      }
-    }
-
-    fetchPosition();
-    const interval = setInterval(fetchPosition, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [walletAddress, marketAddress]);
-  const isCreator = walletAddress?.toString() === market.creator.toString();
-  const isResolved = market.resolved;
-  const now = Date.now() / 1000;
-  const resolutionTime = Number(market.resolutionTime);
-  const canBet = !isResolved && now < resolutionTime;
-  const canResolve = !isResolved && now >= resolutionTime;
-
-  const totalPool = market.yesPool + market.noPool;
-  const yesPercent = totalPool > 0n ? Number((market.yesPool * 100n) / totalPool) : 50;
-
-  const handlePlaceBet = useCallback(async (betYes: boolean) => {
-    if (!wallet || !walletAddress || !betAmount) return;
-
-    try {
-      setTxStatus("Building transaction...");
-      const amount = BigInt(Math.floor(parseFloat(betAmount) * Number(LAMPORTS_PER_SOL)));
-
-      const instruction = await getPlaceBetInstructionAsync({
-        user: wallet.account,
-        market: marketAddress,
-        amount,
-        betYes,
-      });
-
-      setTxStatus("Awaiting signature...");
-      const signature = await send({ instructions: [instruction] });
-
-      setTxStatus(`Done! ${signature?.slice(0, 8)}...`);
-      setBetAmount("");
-      setTimeout(() => setTxStatus(null), STATUS_CLEAR_DELAY_MS);
-      onUpdate?.();
-    } catch (err) {
-      console.error("Place bet failed:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setTxStatus(`Error: ${message}`);
-    }
-  }, [wallet, walletAddress, marketAddress, betAmount, send, onUpdate]);
-
-  const handleResolve = useCallback(async () => {
-    if (!wallet || !walletAddress) return;
-
-    try {
-      setIsResolving(true);
-      setTxStatus("Fetching Pyth price data...");
-
-      const connection = getWeb3Connection();
-      const anchorWallet = createAnchorWallet(wallet);
-
-      setTxStatus("Posting price update & resolving...");
-      const signatures = await resolveMarketWithPyth(
-        connection,
-        anchorWallet,
-        marketAddress,
-        market.feedId,
-      );
-
-      const lastSig = signatures[signatures.length - 1];
-      setTxStatus(`Resolved! ${lastSig?.slice(0, 8)}...`);
-      setTimeout(() => setTxStatus(null), STATUS_CLEAR_DELAY_MS);
-      onUpdate?.();
-    } catch (err) {
-      console.error("Resolve failed:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setTxStatus(`Error: ${message}`);
-    } finally {
-      setIsResolving(false);
-    }
-  }, [wallet, walletAddress, marketAddress, market.feedId, onUpdate]);
-
-  const handleClaim = useCallback(async () => {
-    if (!wallet || !walletAddress) return;
-
-    try {
-      setTxStatus("Claiming...");
-
-      const instruction = await getClaimWinningsInstructionAsync({
-        user: wallet.account,
-        market: marketAddress,
-      });
-
-      const signature = await send({ instructions: [instruction] });
-      setTxStatus(`Claimed! ${signature?.slice(0, 8)}...`);
-      setTimeout(() => setTxStatus(null), STATUS_CLEAR_DELAY_MS);
-      onUpdate?.();
-    } catch (err) {
-      console.error("Claim failed:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setTxStatus(`Error: ${message}`);
-    }
-  }, [wallet, walletAddress, marketAddress, send, onUpdate]);
-
-  const badgeClass = getStatusBadgeClass(isResolved, market.outcome, canBet);
-  const badgeText = getStatusBadgeText(isResolved, market.outcome, canBet, resolutionTime);
+  const canTrade = canBet && status === "connected" && (!profileConfigured || isProfileComplete);
 
   return (
-    <div className="rounded-xl border border-border-low bg-card overflow-hidden">
-      <div className="p-4 pb-3">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <h3 className="font-medium leading-snug">{market.question}</h3>
-          <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${badgeClass}`}>
-            {badgeText}
-          </span>
+    <div className="group border-b border-border-low last:border-b-0 transition-colors hover:bg-bg2/60">
+      {/* Main row: link overlay on background; controls stay above */}
+      <div className="relative flex items-center gap-4 px-4 py-3.5 sm:px-5">
+        <Link
+          href={`/market/${marketAddress}`}
+          className="absolute inset-0 z-0 rounded-none"
+          aria-label={`Open market: ${market.question}`}
+        />
+
+        {/* Question + metadata */}
+        <div className="relative z-[1] flex-1 min-w-0 pointer-events-none">
+          <div className="flex items-center gap-2.5 mb-0.5">
+            <h3 className="text-[15px] font-medium leading-snug text-foreground truncate">
+              {market.question}
+            </h3>
+            {isResolved && (
+              <span
+                className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                  unwrapOutcome(market.outcome)
+                    ? "bg-green-muted text-green-text"
+                    : "bg-red-muted text-red-text"
+                }`}
+              >
+                {unwrapOutcome(market.outcome) ? "Yes" : "No"}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted">
+            <span className="flex items-center gap-1">
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 10v1"
+                />
+              </svg>
+              {formatVolume(totalPool)} SOL
+            </span>
+            {!isResolved && (
+              <span className="flex items-center gap-1">
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                {canBet ? getTimeRemaining(resolutionTime) : "Pending resolve"}
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Probability Bar */}
-        <div className="mb-2">
-          <div className="h-2 rounded-full overflow-hidden bg-red-200 flex">
+        {/* Probability display */}
+        <div className="relative z-[1] hidden sm:flex items-center gap-2 shrink-0 pointer-events-none">
+          <div className="w-24 h-1.5 rounded-full bg-bg3 overflow-hidden flex">
             <div
-              className="bg-green-500 transition-all duration-300"
+              className="bg-green transition-all duration-500"
               style={{ width: `${yesPercent}%` }}
             />
           </div>
-          <div className="flex justify-between mt-1.5 text-xs">
-            <span className="text-green-600 font-medium">{yesPercent}% Yes</span>
-            <span className="text-red-600 font-medium">{100 - yesPercent}% No</span>
-          </div>
+          <span className="text-xs text-muted font-mono w-8 text-right">{yesPercent}%</span>
         </div>
 
-        {/* Pool Info */}
-        <div className="flex items-center gap-4 text-xs text-muted">
-          <span>{formatSol(totalPool)} SOL pool</span>
-          {isCreator && <span className="text-blue-600">You created this</span>}
+        {/* Action buttons — above link overlay */}
+        <div className="relative z-10 flex items-center gap-2 shrink-0 pointer-events-auto">
+          {canTrade && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setExpanded(!expanded);
+                }}
+                className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20"
+              >
+                Yes {yesPercent}¢
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setExpanded(!expanded);
+                }}
+                className="rounded-lg bg-red-muted text-red-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red/20"
+              >
+                No {noPercent}¢
+              </button>
+            </>
+          )}
+
+          {canBet && status === "connected" && profileConfigured && !isProfileComplete && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openProfileModal("username");
+              }}
+              className="rounded-lg border border-amber/30 bg-amber-muted px-3 py-1.5 text-xs font-semibold text-amber"
+            >
+              Set username
+            </button>
+          )}
+
+          {canBet && status !== "connected" && (
+            <>
+              <span className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold">
+                Yes {yesPercent}¢
+              </span>
+              <span className="rounded-lg bg-red-muted text-red-text px-4 py-1.5 text-sm font-semibold">
+                No {noPercent}¢
+              </span>
+            </>
+          )}
+
+          {canResolve && status === "connected" && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleResolve();
+              }}
+              disabled={isSending || isResolving}
+              className="rounded-lg bg-amber-muted text-amber px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-amber/20 disabled:opacity-40"
+            >
+              {isResolving ? "Resolving..." : "Resolve"}
+            </button>
+          )}
+
+          {canResolve && status !== "connected" && (
+            <span className="rounded-lg bg-amber-muted text-amber px-4 py-1.5 text-sm font-semibold">
+              Pending
+            </span>
+          )}
+
+          {isResolved && canClaim && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleClaim();
+              }}
+              disabled={isSending}
+              className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20 disabled:opacity-40"
+            >
+              {isSending ? "Claiming..." : `Claim ${formatSol(claimPayout)}`}
+            </button>
+          )}
+
+          {isResolved && !canClaim && !canResolve && (
+            <span
+              className={`rounded-lg px-4 py-1.5 text-sm font-semibold ${
+                unwrapOutcome(market.outcome)
+                  ? "bg-green-muted text-green-text"
+                  : "bg-red-muted text-red-text"
+              }`}
+            >
+              {unwrapOutcome(market.outcome) ? `Yes ${yesPercent}¢` : `No ${noPercent}¢`}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Actions */}
-      {status === "connected" && canBet && (
-        <div className="border-t border-border-low p-3 bg-cream/30">
-          <div className="flex gap-2">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="SOL"
-              value={betAmount}
-              onChange={(e) => setBetAmount(e.target.value)}
-              disabled={isSending}
-              className="w-20 rounded-md border border-border-low bg-card px-2 py-1.5 text-sm outline-none placeholder:text-muted focus:border-foreground/30 disabled:opacity-60"
-            />
+      {/* Expanded bet panel */}
+      {expanded && canTrade && (
+        <div className="relative z-10 px-4 pb-4 sm:px-5 animate-fade-in">
+          <div className="flex items-center gap-3 rounded-xl bg-bg3 border border-border-low p-3">
+            <div className="relative flex-1">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Amount in SOL"
+                value={betAmount}
+                onChange={(e) => setBetAmount(e.target.value)}
+                disabled={isSending}
+                className="w-full rounded-lg border border-border-low bg-bg2 px-3 py-2 text-sm font-mono text-foreground outline-none placeholder:text-muted/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
+              />
+            </div>
             <button
+              type="button"
               onClick={() => handlePlaceBet(true)}
               disabled={isSending || !betAmount || parseFloat(betAmount) <= 0}
-              className="flex-1 rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-green-700 disabled:opacity-40"
+              className="rounded-lg bg-green px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-green/80 disabled:opacity-40"
             >
-              Bet Yes
+              Buy Yes
             </button>
             <button
+              type="button"
               onClick={() => handlePlaceBet(false)}
               disabled={isSending || !betAmount || parseFloat(betAmount) <= 0}
-              className="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-40"
+              className="rounded-lg bg-red px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-red/80 disabled:opacity-40"
             >
-              Bet No
+              Buy No
             </button>
           </div>
         </div>
       )}
 
-      {status === "connected" && canResolve && (
-        <div className="border-t border-border-low p-3 bg-amber-50">
-          <p className="text-xs text-amber-700 mb-2">
-            Deadline passed — resolve with live Pyth price
-          </p>
-          <button
-            onClick={handleResolve}
-            disabled={isSending || isResolving}
-            className="w-full rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-amber-700 disabled:opacity-40"
-          >
-            {isResolving ? "Fetching price & resolving..." : "Resolve Market"}
-          </button>
-        </div>
-      )}
-
-      <ClaimSection
-        status={status}
-        isResolved={isResolved}
-        userPosition={userPosition}
-        market={market}
-        isSending={isSending}
-        onClaim={handleClaim}
-      />
-
-      {/* Status Message */}
+      {/* Status message */}
       {txStatus && (
-        <div className="border-t border-border-low px-3 py-2 text-xs text-muted bg-cream/50">
-          {txStatus}
+        <div className="relative z-10 px-4 pb-3 sm:px-5">
+          <p className="text-xs text-muted font-mono">{txStatus}</p>
         </div>
       )}
     </div>
