@@ -80,7 +80,6 @@ export function MarketsList(): ReactNode {
         }
       }
 
-      // Sort by resolution time (newest first)
       fetchedMarkets.sort((a, b) => Number(b.market.resolutionTime - a.market.resolutionTime));
 
       setMarkets(fetchedMarkets);
@@ -120,25 +119,30 @@ export function MarketsList(): ReactNode {
 
   if (loading && markets.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="flex items-center gap-2 text-sm text-muted">
-          <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          Loading markets...
-        </div>
+      <div className="rounded-2xl border border-border-low bg-bg2 overflow-hidden">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="flex items-center gap-4 px-5 py-4 border-b border-border-low last:border-b-0">
+            <div className="flex-1 space-y-2">
+              <div className="skeleton h-4 w-3/4 rounded" />
+              <div className="skeleton h-3 w-1/4 rounded" />
+            </div>
+            <div className="flex gap-2">
+              <div className="skeleton h-8 w-20 rounded-lg" />
+              <div className="skeleton h-8 w-20 rounded-lg" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
-        <p className="text-sm text-red-700 mb-2">{error}</p>
+      <div className="rounded-2xl border border-red/20 bg-red-muted p-6 text-center">
+        <p className="text-sm text-red-text mb-3">{error}</p>
         <button
           onClick={fetchMarkets}
-          className="text-sm font-medium text-red-600 hover:underline"
+          className="text-sm font-medium text-red-text hover:text-red transition-colors"
         >
           Try again
         </button>
@@ -148,70 +152,77 @@ export function MarketsList(): ReactNode {
 
   if (markets.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border-low p-8 text-center">
-        <div className="mx-auto w-12 h-12 rounded-full bg-cream flex items-center justify-center mb-3">
-          <svg className="h-6 w-6 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="rounded-2xl border border-dashed border-border-low bg-bg2 p-12 text-center">
+        <div className="mx-auto w-14 h-14 rounded-full bg-bg3 flex items-center justify-center mb-4">
+          <svg className="h-7 w-7 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
         </div>
-        <p className="text-sm text-muted mb-1">No markets yet</p>
-        <p className="text-xs text-muted/70">Create the first prediction market to get started</p>
+        <p className="text-sm font-medium text-foreground-secondary mb-1">No markets yet</p>
+        <p className="text-xs text-muted">Create the first prediction market to get started</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {/* Tabs */}
+      {/* Tab bar */}
       <div className="flex items-center justify-between">
-        <div className="flex gap-1 rounded-lg bg-cream p-1">
+        <div className="flex items-center gap-1 rounded-xl bg-bg2 border border-border-low p-1">
           <button
             onClick={() => setActiveTab("active")}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               activeTab === "active"
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted hover:text-foreground"
+                ? "bg-bg3 text-foreground shadow-sm"
+                : "text-muted hover:text-foreground-secondary"
             }`}
           >
             Active
             {activeMarkets.length > 0 && (
-              <span className="ml-1.5 text-xs text-muted">({activeMarkets.length})</span>
+              <span className={`ml-1.5 text-xs ${activeTab === "active" ? "text-foreground-secondary" : "text-muted"}`}>
+                {activeMarkets.length}
+              </span>
             )}
           </button>
           <button
             onClick={() => setActiveTab("past")}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               activeTab === "past"
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted hover:text-foreground"
+                ? "bg-bg3 text-foreground shadow-sm"
+                : "text-muted hover:text-foreground-secondary"
             }`}
           >
-            Past
+            Resolved
             {pastMarkets.length > 0 && (
-              <span className="ml-1.5 text-xs text-muted">({pastMarkets.length})</span>
+              <span className={`ml-1.5 text-xs ${activeTab === "past" ? "text-foreground-secondary" : "text-muted"}`}>
+                {pastMarkets.length}
+              </span>
             )}
           </button>
         </div>
         <button
           onClick={fetchMarkets}
           disabled={loading}
-          className="text-xs text-muted hover:text-foreground transition disabled:opacity-50"
+          className="flex items-center gap-1.5 text-xs text-muted hover:text-foreground-secondary transition-colors disabled:opacity-50"
         >
-          {loading ? "Refreshing..." : "Refresh"}
+          <svg className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          {loading ? "Refreshing" : "Refresh"}
         </button>
       </div>
 
-      {/* Markets Grid */}
+      {/* Markets list */}
       {displayedMarkets.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border-low p-8 text-center">
+        <div className="rounded-2xl border border-dashed border-border-low bg-bg2 p-10 text-center">
           <p className="text-sm text-muted">
             {activeTab === "active"
               ? "No active markets. Create one to get started!"
-              : "No past markets yet."}
+              : "No resolved markets yet."}
           </p>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-border-low bg-bg2 overflow-hidden divide-y divide-border-low">
           {displayedMarkets.map((item) => (
             <MarketCard
               key={item.address}
