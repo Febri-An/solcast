@@ -2,6 +2,8 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
+import Link from "next/link";
+
 import { type Address } from "@solana/kit";
 
 import {
@@ -74,7 +76,7 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
                 },
                 {
                   memcmp: {
-                    offset: 40, // 8 (discriminator) + 32 (market) = user field
+                    offset: 40,
                     bytes: walletAddress,
                   },
                 },
@@ -140,7 +142,7 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
                   );
                   const market = marketDecoder.decode(data);
                   marketMap.set(marketAddresses[index], market);
-                } catch (e) {
+                } catch {
                   console.warn("Failed to decode market:", marketAddresses[index]);
                 }
               }
@@ -273,22 +275,11 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
 
   if (loading && positions.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="flex items-center gap-2 text-sm text-muted">
+      <div className="flex items-center justify-center py-16">
+        <div className="flex items-center gap-2.5 text-sm text-muted">
           <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
           </svg>
           Loading your positions...
         </div>
@@ -298,11 +289,11 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
-        <p className="text-sm text-red-700 mb-2">{error}</p>
+      <div className="rounded-2xl border border-red/20 bg-red-muted p-6 text-center">
+        <p className="text-sm text-red-text mb-3">{error}</p>
         <button
           onClick={fetchPositions}
-          className="text-sm font-medium text-red-600 hover:underline"
+          className="text-sm font-medium text-red-text hover:text-red transition-colors"
         >
           Try again
         </button>
@@ -312,60 +303,46 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
 
   if (positions.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border-low p-8 text-center">
-        <div className="mx-auto w-12 h-12 rounded-full bg-cream flex items-center justify-center mb-3">
-          <svg
-            className="h-6 w-6 text-muted"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-            />
+      <div className="rounded-2xl border border-dashed border-border-low bg-bg2 p-12 text-center">
+        <div className="mx-auto w-14 h-14 rounded-2xl bg-bg3 border border-border-low flex items-center justify-center mb-4">
+          <svg className="h-7 w-7 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
         </div>
-        <p className="text-sm text-muted mb-1">No positions yet</p>
-        <p className="text-xs text-muted/70 mb-4">
-          Place your first bet to start tracking your activity
-        </p>
-        <a
+        <p className="text-sm font-medium text-foreground-secondary mb-1">No positions yet</p>
+        <p className="text-xs text-muted mb-5">Place your first bet to start tracking your activity</p>
+        <Link
           href="/"
-          className="inline-block text-sm font-medium text-foreground hover:underline"
+          className="inline-block rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-hover"
         >
           Browse markets
-        </a>
+        </Link>
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      {/* Stats Dashboard */}
       <ActivityStats stats={stats} isLoading={loading} />
 
-      {/* Positions Section */}
       <div className="space-y-4">
         {/* Tabs */}
         <div className="flex items-center justify-between">
-          <div className="flex gap-1 rounded-lg bg-cream p-1">
+          <div className="flex items-center gap-1 rounded-xl bg-bg2 border border-border-low p-1">
             {(["all", "active", "resolved", "claimable"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
                   activeTab === tab
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted hover:text-foreground"
+                    ? "bg-bg3 text-foreground shadow-sm"
+                    : "text-muted hover:text-foreground-secondary"
                 }`}
               >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
                 {tabCounts[tab] > 0 && (
-                  <span className="ml-1.5 text-xs text-muted">
-                    ({tabCounts[tab]})
+                  <span className={`ml-1.5 text-xs ${activeTab === tab ? "text-foreground-secondary" : "text-muted"}`}>
+                    {tabCounts[tab]}
                   </span>
                 )}
               </button>
@@ -374,15 +351,18 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
           <button
             onClick={fetchPositions}
             disabled={loading}
-            className="text-xs text-muted hover:text-foreground transition disabled:opacity-50"
+            className="flex items-center gap-1.5 text-xs text-muted hover:text-foreground-secondary transition-colors disabled:opacity-50"
           >
-            {loading ? "Refreshing..." : "Refresh"}
+            <svg className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {loading ? "Refreshing" : "Refresh"}
           </button>
         </div>
 
-        {/* Positions Grid */}
+        {/* Positions */}
         {filteredPositions.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border-low p-8 text-center">
+          <div className="rounded-2xl border border-dashed border-border-low bg-bg2 p-10 text-center">
             <p className="text-sm text-muted">
               No {activeTab === "all" ? "" : activeTab} positions
             </p>

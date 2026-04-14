@@ -79,7 +79,6 @@ function getTimeInfo(market: Market | null): string | null {
 
 export function PositionCard({
   position,
-  positionAddress,
   market,
   marketAddress,
   onUpdate,
@@ -99,7 +98,8 @@ export function PositionCard({
       setTxStatus("Claiming...");
 
       const instruction = await getClaimWinningsInstructionAsync({
-        user: wallet.account,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wallet adapter vs Codama signer types
+        user: wallet.account as any,
         market: marketAddress,
       });
 
@@ -114,91 +114,84 @@ export function PositionCard({
     }
   }, [wallet, marketAddress, send, onUpdate]);
 
-  const statusConfig: Record<PositionStatus, { label: string; bgClass: string }> = {
-    active: { label: "Active", bgClass: "bg-blue-100 text-blue-700" },
-    won: { label: "Won", bgClass: "bg-green-100 text-green-700" },
-    lost: { label: "Lost", bgClass: "bg-red-100 text-red-700" },
-    claimed: { label: "Claimed", bgClass: "bg-gray-100 text-gray-600" },
+  const statusConfig: Record<PositionStatus, { label: string; className: string }> = {
+    active: { label: "Active", className: "bg-primary/10 text-primary" },
+    won: { label: "Won", className: "bg-green-muted text-green-text" },
+    lost: { label: "Lost", className: "bg-red-muted text-red-text" },
+    claimed: { label: "Claimed", className: "bg-bg3 text-muted" },
   };
 
-  const { label, bgClass } = statusConfig[status];
+  const { label, className: badgeClass } = statusConfig[status];
   const timeInfo = getTimeInfo(market);
 
   return (
     <div
-      className="animate-fade-in rounded-xl border border-border-low bg-card overflow-hidden"
+      className="animate-fade-in rounded-2xl border border-border-low bg-bg2 overflow-hidden transition-colors hover:bg-card-hover"
       style={{ animationDelay: `${animationDelay}ms` }}
     >
       <div className="p-4">
-        {/* Header Row */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex-1 min-w-0">
-            <h3 className="font-medium leading-snug truncate">
+            <h3 className="font-medium leading-snug truncate text-foreground">
               {market?.question ?? "Unknown Market"}
             </h3>
             {timeInfo && (
               <p className="text-xs text-muted mt-0.5">{timeInfo}</p>
             )}
           </div>
-          <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${bgClass}`}>
+          <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${badgeClass}`}>
             {label}
           </span>
         </div>
 
-        {/* Bet Info */}
         <div className="flex flex-wrap gap-3 mb-3">
           {position.yesAmount > 0n && (
             <div className="flex items-center gap-1.5">
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-green-100 text-green-700 text-xs font-bold">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-green-muted text-green-text text-xs font-bold">
                 Y
               </span>
-              <span className="font-mono text-sm">
+              <span className="font-mono text-sm text-foreground-secondary">
                 {formatSol(position.yesAmount)} SOL
               </span>
             </div>
           )}
           {position.noAmount > 0n && (
             <div className="flex items-center gap-1.5">
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-red-100 text-red-700 text-xs font-bold">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-red-muted text-red-text text-xs font-bold">
                 N
               </span>
-              <span className="font-mono text-sm">
+              <span className="font-mono text-sm text-foreground-secondary">
                 {formatSol(position.noAmount)} SOL
               </span>
             </div>
           )}
         </div>
 
-        {/* Result Info (for resolved markets) */}
         {market?.resolved && (
           <div className="text-sm">
             <div className="flex items-center gap-2 text-muted">
               <span>
                 Outcome:{" "}
-                <span
-                  className={`font-medium ${
-                    market.outcome ? "text-green-600" : "text-red-600"
-                  }`}
-                >
+                <span className={`font-medium ${market.outcome ? "text-green-text" : "text-red-text"}`}>
                   {market.outcome ? "YES" : "NO"}
                 </span>
               </span>
               {winnings && (
                 <>
-                  <span className="text-border-low">|</span>
+                  <span className="text-border-strong">|</span>
                   <span>
                     {status === "won" || status === "claimed" ? (
                       <>
                         Payout:{" "}
-                        <span className="font-mono font-medium text-green-600">
+                        <span className="font-mono font-medium text-green-text">
                           {formatSol(winnings.payout)} SOL
                         </span>
-                        <span className="text-green-600/70 ml-1">
+                        <span className="text-green-text/70 ml-1">
                           (+{formatSol(winnings.profit)})
                         </span>
                       </>
                     ) : (
-                      <span className="text-red-600">
+                      <span className="text-red-text">
                         Lost {formatSol(position.yesAmount + position.noAmount)} SOL
                       </span>
                     )}
@@ -210,22 +203,20 @@ export function PositionCard({
         )}
       </div>
 
-      {/* Claim Button */}
       {status === "won" && !position.claimed && (
-        <div className="border-t border-border-low p-3 bg-green-50">
+        <div className="border-t border-border-low p-3 bg-green-muted">
           <button
             onClick={handleClaim}
             disabled={isSending}
-            className="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
+            className="w-full rounded-xl bg-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green/80 disabled:opacity-50"
           >
             {isSending ? "Claiming..." : `Claim ${formatSol(winnings?.payout ?? 0n)} SOL`}
           </button>
         </div>
       )}
 
-      {/* Status Message */}
       {txStatus && (
-        <div className="border-t border-border-low px-3 py-2 text-xs text-muted bg-cream/50">
+        <div className="border-t border-border-low px-4 py-2.5 text-xs text-muted font-mono bg-bg3/50">
           {txStatus}
         </div>
       )}
