@@ -108,14 +108,13 @@ export function CreateMarketForm({
         targetPrice: BigInt(Math.floor(priceNum)),
       });
 
-      const signature = await send({ instructions: [instruction] });
+      await send({ instructions: [instruction] });
 
-      setTxStatus(`Created! ${signature?.slice(0, 8)}...`);
+      setSelectedFeed(PRICE_FEEDS[0].feedId);
       setTargetPrice("");
-      setTimeout(() => {
-        setTxStatus(null);
-        onCreated?.();
-      }, 1500);
+      setDurationMinutes("5");
+      setTxStatus(null);
+      onCreated?.();
     } catch (err) {
       console.error("Create market failed:", err);
       const message = err instanceof Error ? err.message : "Unknown error";

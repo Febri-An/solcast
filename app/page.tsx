@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import Link from "next/link";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -97,10 +97,36 @@ function HowItWorks(): ReactNode {
   );
 }
 
+function CheckCircleIcon(): ReactNode {
+  return (
+    <svg
+      className="h-5 w-5 shrink-0 text-green-text"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
+    </svg>
+  );
+}
+
 export default function Home(): ReactNode {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [marketCreatedNotice, setMarketCreatedNotice] = useState<string | null>(null);
   const { status } = useWalletConnection();
   const { isComplete: isProfileComplete, configured, openProfileModal } = useProfile();
+
+  useEffect(() => {
+    if (!marketCreatedNotice) return;
+    const id = window.setTimeout(() => setMarketCreatedNotice(null), 3800);
+    return () => clearTimeout(id);
+  }, [marketCreatedNotice]);
 
   function handleNewMarketClick(): void {
     if (configured && status === "connected" && !isProfileComplete) {
@@ -172,7 +198,12 @@ export default function Home(): ReactNode {
 
         {showCreateForm && (
           <div className="mb-6">
-            <CreateMarketForm onCreated={() => setShowCreateForm(false)} />
+            <CreateMarketForm
+              onCreated={() => {
+                setShowCreateForm(false);
+                setMarketCreatedNotice("Market created successfully.");
+              }}
+            />
           </div>
         )}
 
@@ -226,6 +257,17 @@ export default function Home(): ReactNode {
           </div>
         </div>
       </footer>
+
+      {marketCreatedNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none fixed bottom-6 left-1/2 z-[60] flex max-w-[min(100vw-2rem,22rem)] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-green/25 bg-bg2 px-4 py-3 text-sm font-medium text-foreground shadow-lg shadow-black/40 animate-fade-in"
+        >
+          <CheckCircleIcon />
+          <span>{marketCreatedNotice}</span>
+        </div>
+      )}
     </div>
   );
 }
