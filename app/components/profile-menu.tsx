@@ -59,7 +59,7 @@ export function ProfileMenu(): ReactNode {
         {isOpen && (
           <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-border-low bg-bg2 shadow-2xl shadow-black/40 z-50 overflow-hidden">
             <div className="px-4 pt-4 pb-2">
-              <p className="text-xs font-medium text-muted uppercase tracking-wider">Pilih wallet</p>
+              <p className="text-xs font-medium text-muted uppercase tracking-wider">Select wallet</p>
             </div>
             <div className="p-2">
               {connectors.map((connector) => (
@@ -131,12 +131,7 @@ export function ProfileMenu(): ReactNode {
               <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
               {configured && !isLoading && !isComplete && (
                 <p className="mt-2 text-[11px] text-amber leading-relaxed rounded-md bg-amber-muted/80 border border-amber/20 px-2 py-1.5">
-                  Lengkapi username untuk mulai trading dan membuat market.
-                </p>
-              )}
-              {!configured && (
-                <p className="mt-2 text-[11px] text-muted leading-relaxed">
-                  Sinkronisasi profil nonaktif (atur Supabase untuk mengaktifkan).
+                  Complete your username to start trading and creating markets.
                 </p>
               )}
               <p className="font-mono text-[11px] text-muted break-all mt-2">{address}</p>
@@ -176,7 +171,7 @@ export function ProfileMenu(): ReactNode {
                     d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                   />
                 </svg>
-                Ganti foto profil
+                Change profile picture
               </button>
               <a
                 href="https://faucet.solana.com/"

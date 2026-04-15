@@ -47,7 +47,7 @@ export function ProfileModal(): ReactNode {
     if (!wallet || !address) return;
     const u = username.trim();
     if (!USERNAME_REGEX.test(u)) {
-      setStatusMsg("Username: 3–32 karakter, huruf, angka, atau underscore.");
+      setStatusMsg("Username: 3–32 characters, letters, numbers, or underscore.");
       return;
     }
     setSaving(true);
@@ -61,13 +61,13 @@ export function ProfileModal(): ReactNode {
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
-        throw new Error(data.error ?? "Gagal menyimpan");
+        throw new Error(data.error ?? "Failed to save");
       }
       await refetch();
-      setStatusMsg("Profil disimpan.");
+      setStatusMsg("Profile saved.");
       closeProfileModal();
     } catch (e) {
-      setStatusMsg(e instanceof Error ? e.message : "Gagal menyimpan");
+      setStatusMsg(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -92,13 +92,13 @@ export function ProfileModal(): ReactNode {
         });
         const data = (await res.json()) as { error?: string };
         if (!res.ok) {
-          throw new Error(data.error ?? "Upload gagal");
+          throw new Error(data.error ?? "Failed to upload");
         }
         await refetch();
-        setStatusMsg("Foto profil diperbarui.");
+        setStatusMsg("Profile picture updated.");
         closeProfileModal();
       } catch (e) {
-        setStatusMsg(e instanceof Error ? e.message : "Upload gagal");
+        setStatusMsg(e instanceof Error ? e.message : "Failed to upload");
       } finally {
         setUploading(false);
       }
@@ -113,12 +113,12 @@ export function ProfileModal(): ReactNode {
       <button
         type="button"
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        aria-label="Tutup"
+        aria-label="Close"
         onClick={closeProfileModal}
       />
       <div className="relative z-[101] w-full max-w-md rounded-2xl border border-border-low bg-bg2 shadow-2xl shadow-black/50 overflow-hidden animate-fade-in">
         <div className="flex items-center justify-between border-b border-border-low px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Pengaturan profil</h2>
+          <h2 className="text-sm font-semibold text-foreground">Profile settings</h2>
           <button
             type="button"
             onClick={closeProfileModal}
@@ -131,16 +131,6 @@ export function ProfileModal(): ReactNode {
         </div>
 
         <div className="p-5 space-y-5">
-          {!configured && (
-            <p className="text-xs text-amber leading-relaxed rounded-lg bg-amber-muted border border-amber/20 px-3 py-2">
-              Supabase belum dikonfigurasi. Tambahkan{" "}
-              <span className="font-mono">NEXT_PUBLIC_SUPABASE_URL</span>,{" "}
-              <span className="font-mono">NEXT_PUBLIC_SUPABASE_ANON_KEY</span>, dan{" "}
-              <span className="font-mono">SUPABASE_SERVICE_ROLE_KEY</span> di environment, lalu jalankan
-              SQL migrasi di folder <span className="font-mono">supabase/migrations</span>.
-            </p>
-          )}
-
           {configured && (
             <div className="space-y-6">
               <div className="space-y-3">
@@ -152,12 +142,12 @@ export function ProfileModal(): ReactNode {
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="nama_pengguna"
+                    placeholder="username"
                     disabled={saving}
                     autoComplete="off"
                     className="w-full rounded-xl border border-border-low bg-bg3 px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
                   />
-                  <p className="mt-1.5 text-[11px] text-muted">3–32 karakter: huruf, angka, underscore.</p>
+                  <p className="mt-1.5 text-[11px] text-muted">3–32 characters: letters, numbers, underscore.</p>
                 </div>
                 <button
                   type="button"
@@ -165,7 +155,7 @@ export function ProfileModal(): ReactNode {
                   disabled={saving || !address}
                   className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:opacity-40"
                 >
-                  {saving ? "Menyimpan…" : "Simpan username"}
+                  {saving ? "Saving…" : "Save username"}
                 </button>
               </div>
 
@@ -175,7 +165,7 @@ export function ProfileModal(): ReactNode {
                 className="space-y-3 border-t border-border-low pt-5 scroll-mt-4"
               >
                 <label className="block text-xs font-medium text-foreground-secondary">Foto profil</label>
-                <p className="text-[11px] text-muted">JPEG, PNG, atau Webp — maks. 2MB.</p>
+                <p className="text-[11px] text-muted">JPEG, PNG, or Webp — max. 2MB.</p>
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
@@ -183,7 +173,7 @@ export function ProfileModal(): ReactNode {
                   onChange={(e) => void handleAvatarChange(e.target.files)}
                   className="block w-full text-xs text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-bg3 file:px-3 file:py-2 file:text-sm file:text-foreground-secondary"
                 />
-                {uploading && <p className="text-xs text-muted">Mengunggah…</p>}
+                {uploading && <p className="text-xs text-muted">Uploading…</p>}
               </div>
             </div>
           )}
