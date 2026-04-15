@@ -6,6 +6,7 @@ import { autoDiscover, createClient } from "@solana/client";
 import { SolanaProvider } from "@solana/react-hooks";
 
 import { ProfileModal } from "./profile-modal";
+import { ToastProvider } from "./toast";
 import { ProfileProvider } from "../hooks/use-profile";
 
 const DEVNET_RPC_URL = "https://api.devnet.solana.com";
@@ -31,8 +32,10 @@ export function Providers({ children }: ProvidersProps): ReactNode {
   return (
     <SolanaProvider client={client} query={{ config: queryConfig }}>
       <ProfileProvider>
-        {children}
-        <ProfileModal />
+        <ToastProvider>
+          {children}
+          <ProfileModal />
+        </ToastProvider>
       </ProfileProvider>
     </SolanaProvider>
   );

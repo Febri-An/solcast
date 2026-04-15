@@ -71,11 +71,21 @@ async function fetchUserPositionFromRpc(
   return getUserPositionDecoder().decode(data);
 }
 
+export interface UseMarketTradingOptions {
+  /** Called after a bet transaction succeeds (signature received). */
+  onPlaceBetSuccess?: () => void;
+  /** Called after claim winnings transaction succeeds. */
+  onClaimSuccess?: () => void;
+}
+
 export function useMarketTrading(
   market: Market,
   marketAddress: Address,
   onUpdate?: () => void,
+  options?: UseMarketTradingOptions,
 ) {
+  const onPlaceBetSuccess = options?.onPlaceBetSuccess;
+  const onClaimSuccess = options?.onClaimSuccess;
   const { wallet, status } = useWalletConnection();
   const { send, isSending } = useSendTransaction();
   const { isComplete: isProfileComplete } = useProfile();
@@ -139,11 +149,11 @@ export function useMarketTrading(
         });
 
         setTxStatus("Awaiting signature...");
-        const signature = await send({ instructions: [instruction] });
+        await send({ instructions: [instruction] });
 
-        setTxStatus(`Done! ${signature?.slice(0, 8)}...`);
         setBetAmount("");
-        setTimeout(() => setTxStatus(null), STATUS_CLEAR_DELAY_MS);
+        setTxStatus(null);
+        onPlaceBetSuccess?.();
         onUpdate?.();
       } catch (err) {
         console.error("Place bet failed:", err);
@@ -151,7 +161,7 @@ export function useMarketTrading(
         setTxStatus(`Error: ${message}`);
       }
     },
-    [wallet, walletAddress, marketAddress, betAmount, send, onUpdate, isProfileComplete],
+    [wallet, walletAddress, marketAddress, betAmount, send, onUpdate, isProfileComplete, onPlaceBetSuccess],
   );
 
   const handleResolve = useCallback(async () => {
@@ -197,16 +207,16 @@ export function useMarketTrading(
         market: marketAddress,
       });
 
-      const signature = await send({ instructions: [instruction] });
-      setTxStatus(`Claimed! ${signature?.slice(0, 8)}...`);
-      setTimeout(() => setTxStatus(null), STATUS_CLEAR_DELAY_MS);
+      await send({ instructions: [instruction] });
+      setTxStatus(null);
+      onClaimSuccess?.();
       onUpdate?.();
     } catch (err) {
       console.error("Claim failed:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
       setTxStatus(`Error: ${message}`);
     }
-  }, [wallet, walletAddress, marketAddress, send, onUpdate]);
+  }, [wallet, walletAddress, marketAddress, send, onUpdate, onClaimSuccess]);
 
   const canClaim = useMemo(() => {
     if (status !== "connected" || !isResolved || !userPosition || userPosition.claimed) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 
 import Link from "next/link";
 
@@ -11,6 +11,7 @@ import { type Market } from "../generated/prediction_market";
 import { useMarketTrading } from "../hooks/use-market-trading";
 import { useProfile } from "../hooks/use-profile";
 import { formatSol, formatVolume, getTimeRemaining } from "../lib/market-format";
+import { useToast } from "./toast";
 
 interface MarketCardProps {
   market: Market;
@@ -25,7 +26,17 @@ function unwrapOutcome(option: Option<boolean>): boolean | null {
 export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps): ReactNode {
   const { status } = useWalletConnection();
   const { openProfileModal, configured: profileConfigured } = useProfile();
+  const { showToast } = useToast();
   const [expanded, setExpanded] = useState(false);
+
+  const handleBetSuccess = useCallback(() => {
+    setExpanded(false);
+    showToast("Bet placed successfully.");
+  }, [showToast]);
+
+  const handleClaimSuccess = useCallback(() => {
+    showToast("Winnings claimed successfully.");
+  }, [showToast]);
 
   const {
     isSending,
@@ -46,7 +57,10 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
     canClaim,
     claimPayout,
     isProfileComplete,
-  } = useMarketTrading(market, marketAddress, onUpdate);
+  } = useMarketTrading(market, marketAddress, onUpdate, {
+    onPlaceBetSuccess: handleBetSuccess,
+    onClaimSuccess: handleClaimSuccess,
+  });
 
   const canTrade = canBet && status === "connected" && (!profileConfigured || isProfileComplete);
 
@@ -239,7 +253,7 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
             </div>
             <button
               type="button"
-              onClick={() => handlePlaceBet(true)}
+              onClick={() => void handlePlaceBet(true)}
               disabled={isSending || !betAmount || parseFloat(betAmount) <= 0}
               className="rounded-lg bg-green px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-green/80 disabled:opacity-40"
             >
@@ -247,7 +261,7 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
             </button>
             <button
               type="button"
-              onClick={() => handlePlaceBet(false)}
+              onClick={() => void handlePlaceBet(false)}
               disabled={isSending || !betAmount || parseFloat(betAmount) <= 0}
               className="rounded-lg bg-red px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-red/80 disabled:opacity-40"
             >

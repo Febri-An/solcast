@@ -6,11 +6,11 @@ import { type Address } from "@solana/kit";
 import { useSendTransaction, useWalletConnection } from "@solana/react-hooks";
 
 import { getClaimWinningsInstructionAsync } from "../generated/prediction_market";
+import { useToast } from "./toast";
 import { type Market } from "../generated/prediction_market/accounts/market";
 import { type UserPosition } from "../generated/prediction_market/accounts/userPosition";
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
-const STATUS_CLEAR_DELAY_MS = 3000;
 
 interface PositionCardProps {
   position: UserPosition;
@@ -86,6 +86,7 @@ export function PositionCard({
 }: PositionCardProps): ReactNode {
   const { wallet } = useWalletConnection();
   const { send, isSending } = useSendTransaction();
+  const { showToast } = useToast();
   const [txStatus, setTxStatus] = useState<string | null>(null);
 
   const status = getPositionStatus(position, market);
@@ -103,16 +104,16 @@ export function PositionCard({
         market: marketAddress,
       });
 
-      const signature = await send({ instructions: [instruction] });
-      setTxStatus(`Claimed! ${signature?.slice(0, 8)}...`);
-      setTimeout(() => setTxStatus(null), STATUS_CLEAR_DELAY_MS);
+      await send({ instructions: [instruction] });
+      setTxStatus(null);
+      showToast("Winnings claimed successfully.");
       onUpdate?.();
     } catch (err) {
       console.error("Claim failed:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
       setTxStatus(`Error: ${message}`);
     }
-  }, [wallet, marketAddress, send, onUpdate]);
+  }, [wallet, marketAddress, send, onUpdate, showToast]);
 
   const statusConfig: Record<PositionStatus, { label: string; className: string }> = {
     active: { label: "Active", className: "bg-primary/10 text-primary" },

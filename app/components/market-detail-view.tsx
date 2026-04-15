@@ -18,6 +18,7 @@ import {
 } from "../lib/market-format";
 import { getAssetLabelForFeed, getTradingViewSymbolForFeed } from "../lib/price-feeds";
 import { TradingViewChart } from "./tradingview-chart";
+import { useToast } from "./toast";
 
 const DEVNET_RPC_URL = "https://api.devnet.solana.com";
 
@@ -36,7 +37,16 @@ interface MarketDetailBodyProps {
 function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBodyProps): ReactNode {
   const { status } = useWalletConnection();
   const { openProfileModal, configured: profileConfigured } = useProfile();
+  const { showToast } = useToast();
   const [tab, setTab] = useState<DetailTab>("chart");
+
+  const handleBetSuccess = useCallback(() => {
+    showToast("Bet placed successfully.");
+  }, [showToast]);
+
+  const handleClaimSuccess = useCallback(() => {
+    showToast("Winnings claimed successfully.");
+  }, [showToast]);
 
   const {
     isSending,
@@ -57,7 +67,10 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
     canClaim,
     claimPayout,
     isProfileComplete,
-  } = useMarketTrading(market, marketAddress, onRefresh);
+  } = useMarketTrading(market, marketAddress, onRefresh, {
+    onPlaceBetSuccess: handleBetSuccess,
+    onClaimSuccess: handleClaimSuccess,
+  });
 
   const canTrade = canBet && status === "connected" && (!profileConfigured || isProfileComplete);
 
