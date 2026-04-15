@@ -263,8 +263,8 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
           </div>
         </div>
 
-        {/* Trade sidebar */}
-        <aside className="lg:col-span-1">
+        {/* Trade sidebar — anchor for dashboard Yes/No links */}
+        <aside id="market-trade" className="lg:col-span-1 scroll-mt-28">
           <div className="sticky top-24 rounded-2xl border border-border-low bg-bg2 overflow-hidden">
             <div className="border-b border-border-low px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">Trade</h2>

@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useCallback } from "react";
 
 import Link from "next/link";
 
@@ -23,16 +23,12 @@ function unwrapOutcome(option: Option<boolean>): boolean | null {
   return isSome(option) ? option.value : null;
 }
 
+const TRADE_HASH = "#market-trade";
+
 export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps): ReactNode {
   const { status } = useWalletConnection();
   const { openProfileModal, configured: profileConfigured } = useProfile();
   const { showToast } = useToast();
-  const [expanded, setExpanded] = useState(false);
-
-  const handleBetSuccess = useCallback(() => {
-    setExpanded(false);
-    showToast("Bet placed successfully.");
-  }, [showToast]);
 
   const handleClaimSuccess = useCallback(() => {
     showToast("Winnings claimed successfully.");
@@ -40,8 +36,6 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
 
   const {
     isSending,
-    betAmount,
-    setBetAmount,
     txStatus,
     isResolving,
     isResolved,
@@ -51,18 +45,17 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
     totalPool,
     yesPercent,
     noPercent,
-    handlePlaceBet,
     handleResolve,
     handleClaim,
     canClaim,
     claimPayout,
     isProfileComplete,
   } = useMarketTrading(market, marketAddress, onUpdate, {
-    onPlaceBetSuccess: handleBetSuccess,
     onClaimSuccess: handleClaimSuccess,
   });
 
   const canTrade = canBet && status === "connected" && (!profileConfigured || isProfileComplete);
+  const marketHref = `/market/${marketAddress}${TRADE_HASH}`;
 
   return (
     <div className="group border-b border-border-low last:border-b-0 transition-colors hover:bg-bg2/60">
@@ -131,32 +124,24 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
           <span className="text-xs text-muted font-mono w-8 text-right">{yesPercent}%</span>
         </div>
 
-        {/* Action buttons — above link overlay */}
+        {/* Action buttons — navigate to market page to trade */}
         <div className="relative z-10 flex items-center gap-2 shrink-0 pointer-events-auto">
           {canTrade && (
             <>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setExpanded(!expanded);
-                }}
+              <Link
+                href={marketHref}
+                onClick={(e) => e.stopPropagation()}
                 className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20"
               >
                 Yes {yesPercent}¢
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setExpanded(!expanded);
-                }}
+              </Link>
+              <Link
+                href={marketHref}
+                onClick={(e) => e.stopPropagation()}
                 className="rounded-lg bg-red-muted text-red-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red/20"
               >
                 No {noPercent}¢
-              </button>
+              </Link>
             </>
           )}
 
@@ -176,12 +161,20 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
 
           {canBet && status !== "connected" && (
             <>
-              <span className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold">
+              <Link
+                href={marketHref}
+                onClick={(e) => e.stopPropagation()}
+                className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20"
+              >
                 Yes {yesPercent}¢
-              </span>
-              <span className="rounded-lg bg-red-muted text-red-text px-4 py-1.5 text-sm font-semibold">
+              </Link>
+              <Link
+                href={marketHref}
+                onClick={(e) => e.stopPropagation()}
+                className="rounded-lg bg-red-muted text-red-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red/20"
+              >
                 No {noPercent}¢
-              </span>
+              </Link>
             </>
           )}
 
@@ -235,43 +228,7 @@ export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps)
         </div>
       </div>
 
-      {/* Expanded bet panel */}
-      {expanded && canTrade && (
-        <div className="relative z-10 px-4 pb-4 sm:px-5 animate-fade-in">
-          <div className="flex items-center gap-3 rounded-xl bg-bg3 border border-border-low p-3">
-            <div className="relative flex-1">
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Amount in SOL"
-                value={betAmount}
-                onChange={(e) => setBetAmount(e.target.value)}
-                disabled={isSending}
-                className="w-full rounded-lg border border-border-low bg-bg2 px-3 py-2 text-sm font-mono text-foreground outline-none placeholder:text-muted/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => void handlePlaceBet(true)}
-              disabled={isSending || !betAmount || parseFloat(betAmount) <= 0}
-              className="rounded-lg bg-green px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-green/80 disabled:opacity-40"
-            >
-              Buy Yes
-            </button>
-            <button
-              type="button"
-              onClick={() => void handlePlaceBet(false)}
-              disabled={isSending || !betAmount || parseFloat(betAmount) <= 0}
-              className="rounded-lg bg-red px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-red/80 disabled:opacity-40"
-            >
-              Buy No
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Status message */}
+      {/* Status message (resolve / claim / errors) */}
       {txStatus && (
         <div className="relative z-10 px-4 pb-3 sm:px-5">
           <p className="text-xs text-muted font-mono">{txStatus}</p>
