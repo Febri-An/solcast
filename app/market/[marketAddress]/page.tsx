@@ -38,7 +38,7 @@ export default function MarketPage(): ReactNode {
               </span>
             </Link>
             <div className="hidden sm:flex items-center gap-1">
-              <span className="rounded-lg px-3 py-1.5 text-sm font-medium text-foreground bg-bg3">
+              <span className="cursor-default rounded-lg px-3 py-1.5 text-sm font-medium text-foreground bg-bg3">
                 Market
               </span>
               <Link

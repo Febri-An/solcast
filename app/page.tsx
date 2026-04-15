@@ -150,7 +150,7 @@ export default function Home(): ReactNode {
               </span>
             </div>
             <div className="hidden sm:flex items-center gap-1">
-              <span className="rounded-lg px-3 py-1.5 text-sm font-medium text-foreground bg-bg3">
+              <span className="cursor-default rounded-lg px-3 py-1.5 text-sm font-medium text-foreground bg-bg3">
                 Markets
               </span>
               <Link

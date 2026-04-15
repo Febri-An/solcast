@@ -173,7 +173,7 @@ export function MarketsList(): ReactNode {
             onClick={() => setActiveTab("active")}
             className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               activeTab === "active"
-                ? "bg-bg3 text-foreground shadow-sm"
+                ? "!cursor-default bg-bg3 text-foreground shadow-sm"
                 : "text-muted hover:text-foreground-secondary"
             }`}
           >
@@ -188,7 +188,7 @@ export function MarketsList(): ReactNode {
             onClick={() => setActiveTab("past")}
             className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               activeTab === "past"
-                ? "bg-bg3 text-foreground shadow-sm"
+                ? "!cursor-default bg-bg3 text-foreground shadow-sm"
                 : "text-muted hover:text-foreground-secondary"
             }`}
           >

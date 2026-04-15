@@ -83,7 +83,7 @@ export default function ActivityPage(): ReactNode {
               >
                 Markets
               </Link>
-              <span className="rounded-lg px-3 py-1.5 text-sm font-medium text-foreground bg-bg3">
+              <span className="cursor-default rounded-lg px-3 py-1.5 text-sm font-medium text-foreground bg-bg3">
                 Portfolio
               </span>
             </div>
