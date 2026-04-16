@@ -1,5 +1,5 @@
 {
-  "name": "prediction-markets",
+  "name": "solcast",
   "scripts": {
     "anchor-build": "cd anchor && anchor build",
     "anchor-test": "cd anchor && anchor test --skip-deploy",

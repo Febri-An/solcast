@@ -7,18 +7,9 @@ import Link from "next/link";
 import { type Address } from "@solana/kit";
 import { useWalletConnection } from "@solana/react-hooks";
 
+import { BrandLogo } from "../components/brand-logo";
 import { PositionsList } from "../components/positions-list";
 import { WalletButton } from "../components/wallet-button";
-
-function Logo(): ReactNode {
-  return (
-    <svg viewBox="0 0 32 32" className="h-7 w-7" fill="none">
-      <rect width="32" height="32" rx="8" className="fill-primary" />
-      <path d="M8 16L14 10L20 16L14 22Z" fill="white" fillOpacity="0.9" />
-      <path d="M14 16L20 10L26 16L20 22Z" fill="white" fillOpacity="0.5" />
-    </svg>
-  );
-}
 
 function WalletNotConnected(): ReactNode {
   return (
@@ -71,9 +62,9 @@ export default function ActivityPage(): ReactNode {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 lg:px-6">
           <div className="flex items-center gap-6">
             <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition">
-              <Logo />
+              <BrandLogo priority />
               <span className="text-base font-bold tracking-tight text-foreground">
-                Prediction Markets
+                SolCast
               </span>
             </Link>
             <div className="hidden sm:flex items-center gap-1">
@@ -111,7 +102,7 @@ export default function ActivityPage(): ReactNode {
         <div className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
           <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-muted">
             <div className="flex items-center gap-3">
-              <Logo />
+              <BrandLogo />
               <span>Built with Anchor + Pyth + @solana/react-hooks</span>
             </div>
             <div className="flex items-center gap-5">

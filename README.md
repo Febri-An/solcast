@@ -1,4 +1,4 @@
-# Solana Prediction Markets
+# SolCast
 
 A minimal full-stack prediction market example on Solana using Anchor + framework-kit. Users can create binary (YES/NO) markets, place bets with SOL, and claim winnings after manual resolution.
 

@@ -159,7 +159,7 @@ export function MarketsList(): ReactNode {
           </svg>
         </div>
         <p className="text-sm font-medium text-foreground-secondary mb-1">No markets yet</p>
-        <p className="text-xs text-muted">Create the first prediction market to get started</p>
+        <p className="text-xs text-muted">Create the first market to get started</p>
       </div>
     );
   }

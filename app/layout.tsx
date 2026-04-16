@@ -15,13 +15,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Prediction Markets | Trade on Future Events",
+  title: "SolCast | Trade on Future Events",
   description:
-    "Bet SOL on real-world outcomes. Powered by Pyth oracles on Solana.",
+    "SolCast — bet SOL on real-world outcomes. Powered by Pyth oracles on Solana.",
+  applicationName: "SolCast",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/logo.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: "/logo.png",
   },
 };
 
