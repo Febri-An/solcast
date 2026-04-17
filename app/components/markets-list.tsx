@@ -9,6 +9,7 @@ import {
   type Market,
   PREDICTION_MARKET_PROGRAM_ADDRESS,
 } from "../generated/prediction_market";
+import { isOpenForBetting } from "../lib/market-format";
 import { MarketCard } from "./market-card";
 
 const MARKET_DISCRIMINATOR_BASE58 = "dkokXHR3DTw";
@@ -119,17 +120,25 @@ export function MarketsList(): ReactNode {
 
   if (loading && markets.length === 0) {
     return (
-      <div className="rounded-2xl border border-border-low bg-bg2 overflow-hidden">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="flex items-center gap-4 px-5 py-4 border-b border-border-low last:border-b-0">
-            <div className="flex-1 space-y-2">
-              <div className="skeleton h-4 w-3/4 rounded" />
-              <div className="skeleton h-3 w-1/4 rounded" />
-            </div>
+          <div
+            key={i}
+            className="rounded-2xl border border-border-low bg-bg2 p-4 space-y-3 min-h-[220px]"
+          >
             <div className="flex gap-2">
-              <div className="skeleton h-8 w-20 rounded-lg" />
-              <div className="skeleton h-8 w-20 rounded-lg" />
+              <div className="skeleton h-10 w-10 shrink-0 rounded-lg" />
+              <div className="flex-1 space-y-2 pt-1">
+                <div className="skeleton h-3 w-full rounded" />
+                <div className="skeleton h-3 w-2/3 rounded" />
+              </div>
+              <div className="skeleton h-12 w-12 shrink-0 rounded-full" />
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="skeleton h-20 rounded-xl" />
+              <div className="skeleton h-20 rounded-xl" />
+            </div>
+            <div className="skeleton h-4 w-1/2 rounded" />
           </div>
         ))}
       </div>
@@ -220,6 +229,26 @@ export function MarketsList(): ReactNode {
               ? "No active markets. Create one to get started!"
               : "No resolved markets yet."}
           </p>
+        </div>
+      ) : activeTab === "active" ? (
+        <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {displayedMarkets.map((item) => {
+            const spanFull = !isOpenForBetting(item.market);
+            return (
+              <div
+                key={item.address}
+                className={`min-w-0 flex flex-col ${spanFull ? "col-span-full sm:col-span-2 lg:col-span-4" : ""}`}
+              >
+                <MarketCard
+                  market={item.market}
+                  marketAddress={item.address}
+                  onUpdate={fetchMarkets}
+                  density="grid"
+                  className="h-full min-h-0"
+                />
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="rounded-2xl border border-border-low bg-bg2 overflow-hidden divide-y divide-border-low">

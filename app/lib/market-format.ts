@@ -27,3 +27,31 @@ export function getTimeRemaining(resolutionTime: number): string {
 export function formatUsdWhole(value: bigint): string {
   return Number(value).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
+
+/** Open for betting: not resolved and before resolution time. */
+export function isOpenForBetting(market: { resolved: boolean; resolutionTime: bigint }): boolean {
+  if (market.resolved) return false;
+  return Date.now() / 1000 < Number(market.resolutionTime);
+}
+
+/**
+ * Approximate initial duration in seconds from create form: resolutionTime − floor(marketId ms → s).
+ * Matches 2m / 5m / 1h / 1d / 1w options when marketId is Date.now() at creation.
+ */
+export function inferInitialDurationSeconds(market: {
+  marketId: bigint;
+  resolutionTime: bigint;
+}): number | null {
+  const createdApproxSec = Math.floor(Number(market.marketId) / 1000);
+  const resSec = Number(market.resolutionTime);
+  const d = resSec - createdApproxSec;
+  if (d < 30 || d > 86400 * 366) return null;
+  return d;
+}
+
+/** Markets created with duration ≤ 5 minutes (2m / 5m) — show LIVE strip. */
+export function isShortLiveWindowMarket(market: { marketId: bigint; resolutionTime: bigint }): boolean {
+  const d = inferInitialDurationSeconds(market);
+  if (d === null) return false;
+  return d <= 5 * 60;
+}

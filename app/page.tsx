@@ -100,7 +100,7 @@ export default function Home(): ReactNode {
       {/* Navbar */}
       <nav className="sticky top-0 z-50 bg-bg1/80 backdrop-blur-xl">
         <div className="absolute inset-x-0 bottom-0 h-px bg-border-low" />
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 lg:px-6">
+        <div className="mx-auto flex max-w-[1440px] items-center justify-between px-4 py-3 lg:px-6">
           <div className="flex items-center gap-6">
             <Link href="/" className="flex items-center gap-2.5 hover:opacity-90 transition-opacity">
               <BrandLogo priority />
@@ -132,7 +132,7 @@ export default function Home(): ReactNode {
       </nav>
 
       {/* Main content */}
-      <main className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
+      <main className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">
         {/* Page header */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -173,7 +173,7 @@ export default function Home(): ReactNode {
 
       {/* Footer */}
       <footer className="mt-16 border-t border-border-low">
-        <div className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
+        <div className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">
           <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-muted">
             <div className="flex items-center gap-3">
               <BrandLogo />

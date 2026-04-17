@@ -13,6 +13,13 @@ const FEED_HEX_TO_LABEL: Record<string, string> = {
   ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace: "Ethereum (ETH)",
 };
 
+/** Short name for LIVE / footer */
+const FEED_HEX_TO_BRAND: Record<string, string> = {
+  e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43: "Bitcoin",
+  ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d: "Solana",
+  ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace: "Ethereum",
+};
+
 export function feedIdBytesToHex(feedId: ReadonlyUint8Array): string {
   return Array.from(feedId)
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -27,4 +34,9 @@ export function getTradingViewSymbolForFeed(feedId: ReadonlyUint8Array): string 
 export function getAssetLabelForFeed(feedId: ReadonlyUint8Array): string {
   const hex = feedIdBytesToHex(feedId);
   return FEED_HEX_TO_LABEL[hex] ?? "Crypto asset";
+}
+
+export function getAssetBrandName(feedId: ReadonlyUint8Array): string {
+  const hex = feedIdBytesToHex(feedId);
+  return FEED_HEX_TO_BRAND[hex] ?? "Crypto";
 }
