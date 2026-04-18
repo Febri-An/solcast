@@ -20,6 +20,13 @@ const FEED_HEX_TO_BRAND: Record<string, string> = {
   ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace: "Ethereum",
 };
 
+/** Public URL under `/public` for market card asset icons */
+const FEED_HEX_TO_ICON_SRC: Record<string, string> = {
+  e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43: "/bitcoin.png",
+  ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d: "/solana.png",
+  ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace: "/ethereum.png",
+};
+
 export function feedIdBytesToHex(feedId: ReadonlyUint8Array): string {
   return Array.from(feedId)
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -39,4 +46,9 @@ export function getAssetLabelForFeed(feedId: ReadonlyUint8Array): string {
 export function getAssetBrandName(feedId: ReadonlyUint8Array): string {
   const hex = feedIdBytesToHex(feedId);
   return FEED_HEX_TO_BRAND[hex] ?? "Crypto";
+}
+
+export function getAssetIconSrc(feedId: ReadonlyUint8Array): string | null {
+  const hex = feedIdBytesToHex(feedId);
+  return FEED_HEX_TO_ICON_SRC[hex] ?? null;
 }

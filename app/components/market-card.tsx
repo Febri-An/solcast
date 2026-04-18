@@ -2,6 +2,7 @@
 
 import { type ReactNode, useCallback, useState } from "react";
 
+import Image from "next/image";
 import Link from "next/link";
 
 import { type Address, type Option, isSome } from "@solana/kit";
@@ -16,7 +17,7 @@ import {
   getTimeRemaining,
   isShortLiveWindowMarket,
 } from "../lib/market-format";
-import { feedIdBytesToHex, getAssetBrandName } from "../lib/price-feeds";
+import { getAssetBrandName, getAssetIconSrc } from "../lib/price-feeds";
 import { useToast } from "./toast";
 
 interface MarketCardProps {
@@ -69,7 +70,7 @@ function SentimentRing({ percent, compact }: { percent: number; compact?: boolea
     >
       <span
         className={`relative z-[1] font-semibold leading-none ${
-          compact ? "mb-0 text-[9px]" : "mb-1 text-[10px]"
+          compact ? "-mb-1 text-[9px]" : "mb-1 text-[10px]"
         } ${sentiment.colorClass}`}
       >
         {sentiment.text}
@@ -144,39 +145,32 @@ function SentimentRing({ percent, compact }: { percent: number; compact?: boolea
   );
 }
 
-function AssetIcon({ feedId, compact }: { feedId: Market["feedId"]; compact?: boolean }): ReactNode {
-  const hex = feedIdBytesToHex(feedId);
-  const common = `flex shrink-0 items-center justify-center rounded-lg font-bold text-white shadow-inner ${
-    compact ? "h-8 w-8 text-sm" : "h-10 w-10 text-lg"
-  }`;
+const ASSET_ICON_INNER_ZOOM = 1.24;
 
-  if (hex === "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43") {
+function AssetIcon({ feedId }: { feedId: Market["feedId"]; compact?: boolean }): ReactNode {
+  const iconSrc = getAssetIconSrc(feedId);
+  const brand = getAssetBrandName(feedId);
+  const size = 40;
+  const box = "h-10 w-10";
+  const frame = `relative flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-border-low bg-bg3 shadow-inner ${box}`;
+
+  if (iconSrc) {
     return (
-      <div className={`${common} bg-[#f7931a]`} aria-hidden>
-        ₿
-      </div>
-    );
-  }
-  if (hex === "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d") {
-    return (
-      <div
-        className={`${common} bg-gradient-to-br from-[#9945ff] to-[#14f195]`}
-        aria-hidden
-      >
-        ◎
-      </div>
-    );
-  }
-  if (hex === "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace") {
-    return (
-      <div className={`${common} bg-[#627eea]`} aria-hidden>
-        Ξ
+      <div className={frame}>
+        <Image
+          src={iconSrc}
+          alt={brand}
+          fill
+          sizes={`${size}px`}
+          className="object-cover object-center"
+          style={{ transform: `scale(${ASSET_ICON_INNER_ZOOM})` }}
+        />
       </div>
     );
   }
 
   return (
-    <div className={`${common} bg-bg3 text-foreground-secondary`} aria-hidden>
+    <div className={`${frame} font-bold text-foreground-secondary`} aria-hidden>
       ◈
     </div>
   );
