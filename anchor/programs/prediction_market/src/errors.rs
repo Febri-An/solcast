@@ -22,4 +22,8 @@ pub enum MarketError {
     Overflow,
     #[msg("Target price must be greater than zero")]
     InvalidTargetPrice,
+    #[msg("Resolve window has closed")]
+    ResolveWindowClosed,
+    #[msg("Price update timestamp is outside the allowed resolution window")]
+    InvalidPriceTimestamp,
 }

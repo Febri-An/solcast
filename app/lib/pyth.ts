@@ -2,7 +2,7 @@
  * Pyth price feed helpers for the prediction market.
  *
  * Implements the "Price Update Account" flow:
- *   1. Fetch latest price data from Hermes (Pyth's off-chain API)
+ *   1. Fetch price data at market expiry timestamp from Hermes
  *   2. Post the price update to Solana via the Pyth Receiver program
  *   3. Invoke resolve_market — outcome is determined automatically on-chain
  *      by comparing the Pyth price against the market's stored target_price.
@@ -31,11 +31,17 @@ function feedIdBytesToHex(feedId: ArrayLike<number>): string {
   );
 }
 
-async function fetchPriceUpdateData(feedIdHex: string): Promise<string[]> {
+async function fetchPriceUpdateDataAtTimestamp(
+  feedIdHex: string,
+  publishTime: number,
+): Promise<string[]> {
   const hermes = new HermesClient(HERMES_URL);
-  const result = await hermes.getLatestPriceUpdates([feedIdHex], {
+  const result = await hermes.getPriceUpdatesAtTimestamp(publishTime, [feedIdHex], {
     encoding: "base64",
   });
+  if (!result.binary?.data?.length) {
+    throw new Error("No Pyth price update available at the market resolution timestamp");
+  }
   return result.binary.data;
 }
 
@@ -61,7 +67,7 @@ function buildResolveMarketIx(
 /**
  * Resolve a prediction market using a verified Pyth price update.
  *
- * Fetches the latest price for the market's feed from Hermes, posts it
+ * Fetches a price update around the market resolution timestamp from Hermes, posts it
  * on-chain via the Pyth Receiver program, then invokes resolve_market.
  * The on-chain program compares the Pyth price against the market's
  * target_price and sets outcome automatically.
@@ -73,9 +79,13 @@ export async function resolveMarketWithPyth(
   wallet: Wallet,
   marketAddress: string,
   feedId: ArrayLike<number>,
+  resolutionTime: number,
 ): Promise<string[]> {
   const feedIdHex = feedIdBytesToHex(feedId);
-  const priceUpdateData = await fetchPriceUpdateData(feedIdHex);
+  const priceUpdateData = await fetchPriceUpdateDataAtTimestamp(
+    feedIdHex,
+    resolutionTime,
+  );
 
   const pythReceiver = new PythSolanaReceiver({ connection, wallet });
   const txBuilder = pythReceiver.newTransactionBuilder({

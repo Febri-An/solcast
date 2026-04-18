@@ -12,6 +12,9 @@ mod state;
 use errors::MarketError;
 use state::{Market, UserPosition, MAX_QUESTION_LEN};
 
+const PRICE_TIMESTAMP_TOLERANCE_SECONDS: i64 = 30;
+const RESOLVE_GRACE_PERIOD_SECONDS: i64 = 30 * 60;
+
 declare_id!("DYy72hMhhyHvbPjy71pp4137U4FumNuzM6i3mLVU2MWk");
 
 #[program]
@@ -117,10 +120,18 @@ pub mod prediction_market {
             MarketError::ResolutionTooEarly
         );
         require!(!market.resolved, MarketError::AlreadyResolved);
+        require!(
+            clock.unix_timestamp <= market.resolution_time + RESOLVE_GRACE_PERIOD_SECONDS,
+            MarketError::ResolveWindowClosed
+        );
 
         let price_update = &ctx.accounts.price_update;
-        let maximum_age: u64 = 30;
-        let price = price_update.get_price_no_older_than(&clock, maximum_age, &market.feed_id)?;
+        let price = price_update.get_price_unchecked(&market.feed_id)?;
+        let publish_time_delta = (price.publish_time - market.resolution_time).abs();
+        require!(
+            publish_time_delta <= PRICE_TIMESTAMP_TOLERANCE_SECONDS,
+            MarketError::InvalidPriceTimestamp
+        );
 
         // Scale target_price (whole USD) to match Pyth's fixed-point representation.
         // Pyth prices use a negative exponent, e.g. price=7337436924469 exp=-8 → $73,374.37
@@ -136,7 +147,8 @@ pub mod prediction_market {
         let outcome = (price.price as i128) > target_scaled;
 
         msg!(
-            "Resolve: price={} * 10^{}, target=${}, outcome={}",
+            "Resolve: publish_time={}, price={} * 10^{}, target=${}, outcome={}",
+            price.publish_time,
             price.price,
             price.exponent,
             market.target_price,

@@ -180,6 +180,7 @@ export function useMarketTrading(
         anchorWallet,
         marketAddress,
         market.feedId,
+        resolutionTime,
       );
 
       const lastSig = signatures[signatures.length - 1];
@@ -193,7 +194,7 @@ export function useMarketTrading(
     } finally {
       setIsResolving(false);
     }
-  }, [wallet, walletAddress, marketAddress, market.feedId, onUpdate]);
+  }, [wallet, walletAddress, marketAddress, market.feedId, onUpdate, resolutionTime]);
 
   const handleClaim = useCallback(async () => {
     if (!wallet || !walletAddress) return;
