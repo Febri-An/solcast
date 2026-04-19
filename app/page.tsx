@@ -1,13 +1,13 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import Link from "next/link";
 import { useWalletConnection } from "@solana/react-hooks";
 
 import { BrandLogo } from "./components/brand-logo";
 import { CreateMarketForm } from "./components/create-market-form";
-import { MarketsList } from "./components/markets-list";
+import { MarketsList, type MarketsFilterTab } from "./components/markets-list";
 import { useToast } from "./components/toast";
 import { WalletButton } from "./components/wallet-button";
 import { useProfile } from "./hooks/use-profile";
@@ -83,6 +83,7 @@ function HowItWorks(): ReactNode {
 
 export default function Home(): ReactNode {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [marketsTab, setMarketsTab] = useState<MarketsFilterTab>("active");
   const { showToast } = useToast();
   const { status } = useWalletConnection();
   const { isComplete: isProfileComplete, configured, openProfileModal } = useProfile();
@@ -94,6 +95,12 @@ export default function Home(): ReactNode {
     }
     setShowCreateForm(!showCreateForm);
   }
+
+  useEffect(() => {
+    if (marketsTab !== "active" && showCreateForm) {
+      setShowCreateForm(false);
+    }
+  }, [marketsTab, showCreateForm]);
 
   return (
     <div className="min-h-screen bg-bg1 text-foreground">
@@ -141,18 +148,20 @@ export default function Home(): ReactNode {
               Trade on crypto price outcomes. Powered by Pyth oracles on Solana.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleNewMarketClick}
-            className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
-              showCreateForm
-                ? "bg-bg3 text-foreground-secondary border border-border-low"
-                : "bg-primary text-white hover:bg-primary-hover"
-            }`}
-          >
-            <PlusIcon />
-            {showCreateForm ? "Cancel" : "New Market"}
-          </button>
+          {marketsTab === "active" && (
+            <button
+              type="button"
+              onClick={handleNewMarketClick}
+              className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+                showCreateForm
+                  ? "bg-bg3 text-foreground-secondary border border-border-low"
+                  : "bg-primary text-white hover:bg-primary-hover"
+              }`}
+            >
+              <PlusIcon />
+              {showCreateForm ? "Cancel" : "New Market"}
+            </button>
+          )}
         </div>
 
         {showCreateForm && (
@@ -166,7 +175,7 @@ export default function Home(): ReactNode {
           </div>
         )}
 
-        <MarketsList />
+        <MarketsList activeTab={marketsTab} onActiveTabChange={setMarketsTab} />
 
         <HowItWorks />
       </main>

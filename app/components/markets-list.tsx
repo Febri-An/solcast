@@ -21,13 +21,17 @@ interface MarketWithAddress {
   market: Market;
 }
 
-type FilterTab = "active" | "pending" | "past";
+export type MarketsFilterTab = "active" | "pending" | "past";
 
-export function MarketsList(): ReactNode {
+interface MarketsListProps {
+  activeTab: MarketsFilterTab;
+  onActiveTabChange: (tab: MarketsFilterTab) => void;
+}
+
+export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps): ReactNode {
   const [markets, setMarkets] = useState<MarketWithAddress[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<FilterTab>("active");
 
   const fetchMarkets = useCallback(async () => {
     setLoading(true);
@@ -188,7 +192,7 @@ export function MarketsList(): ReactNode {
       <div className="flex items-center justify-between">
         <div className="flex flex-wrap items-center gap-1 rounded-xl bg-bg2 border border-border-low p-1">
           <button
-            onClick={() => setActiveTab("active")}
+            onClick={() => onActiveTabChange("active")}
             className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               activeTab === "active"
                 ? "!cursor-default bg-bg3 text-foreground shadow-sm"
@@ -203,7 +207,7 @@ export function MarketsList(): ReactNode {
             )}
           </button>
           <button
-            onClick={() => setActiveTab("pending")}
+            onClick={() => onActiveTabChange("pending")}
             className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               activeTab === "pending"
                 ? "!cursor-default bg-bg3 text-foreground shadow-sm"
@@ -218,7 +222,7 @@ export function MarketsList(): ReactNode {
             )}
           </button>
           <button
-            onClick={() => setActiveTab("past")}
+            onClick={() => onActiveTabChange("past")}
             className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               activeTab === "past"
                 ? "!cursor-default bg-bg3 text-foreground shadow-sm"
