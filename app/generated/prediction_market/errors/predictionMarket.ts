@@ -34,18 +34,24 @@ export const PREDICTION_MARKET_ERROR__NO_WINNINGS = 0x1777; // 6007
 export const PREDICTION_MARKET_ERROR__OVERFLOW = 0x1778; // 6008
 /** InvalidTargetPrice: Target price must be greater than zero */
 export const PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE = 0x1779; // 6009
+/** ResolveWindowClosed: Resolve window has closed */
+export const PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED = 0x177a; // 6010
+/** InvalidPriceTimestamp: Price update timestamp is outside the allowed resolution window */
+export const PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP = 0x177b; // 6011
 
 export type PredictionMarketError =
   | typeof PREDICTION_MARKET_ERROR__ALREADY_CLAIMED
   | typeof PREDICTION_MARKET_ERROR__ALREADY_RESOLVED
   | typeof PREDICTION_MARKET_ERROR__BETTING_CLOSED
   | typeof PREDICTION_MARKET_ERROR__INVALID_BET_AMOUNT
+  | typeof PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP
   | typeof PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE
   | typeof PREDICTION_MARKET_ERROR__NOT_RESOLVED
   | typeof PREDICTION_MARKET_ERROR__NO_WINNINGS
   | typeof PREDICTION_MARKET_ERROR__OVERFLOW
   | typeof PREDICTION_MARKET_ERROR__RESOLUTION_TIME_IN_PAST
-  | typeof PREDICTION_MARKET_ERROR__RESOLUTION_TOO_EARLY;
+  | typeof PREDICTION_MARKET_ERROR__RESOLUTION_TOO_EARLY
+  | typeof PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED;
 
 let predictionMarketErrorMessages:
   | Record<PredictionMarketError, string>
@@ -56,12 +62,14 @@ if (process.env.NODE_ENV !== "production") {
     [PREDICTION_MARKET_ERROR__ALREADY_RESOLVED]: `Market has already been resolved`,
     [PREDICTION_MARKET_ERROR__BETTING_CLOSED]: `Betting is closed for this market`,
     [PREDICTION_MARKET_ERROR__INVALID_BET_AMOUNT]: `Bet amount must be greater than zero`,
+    [PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP]: `Price update timestamp is outside the allowed resolution window`,
     [PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE]: `Target price must be greater than zero`,
     [PREDICTION_MARKET_ERROR__NOT_RESOLVED]: `Market has not been resolved yet`,
     [PREDICTION_MARKET_ERROR__NO_WINNINGS]: `No winnings to claim`,
     [PREDICTION_MARKET_ERROR__OVERFLOW]: `Arithmetic overflow`,
     [PREDICTION_MARKET_ERROR__RESOLUTION_TIME_IN_PAST]: `Resolution time must be in the future`,
     [PREDICTION_MARKET_ERROR__RESOLUTION_TOO_EARLY]: `Market cannot be resolved yet`,
+    [PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED]: `Resolve window has closed`,
   };
 }
 

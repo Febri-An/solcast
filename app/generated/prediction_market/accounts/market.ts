@@ -73,6 +73,7 @@ export type Market = {
   targetPrice: bigint;
   yesPool: bigint;
   noPool: bigint;
+  /** Whether the market has been resolved */
   resolved: boolean;
   /** Some(true) = price was above target (YES won) */
   outcome: Option<boolean>;
@@ -90,6 +91,7 @@ export type MarketArgs = {
   targetPrice: number | bigint;
   yesPool: number | bigint;
   noPool: number | bigint;
+  /** Whether the market has been resolved */
   resolved: boolean;
   /** Some(true) = price was above target (YES won) */
   outcome: OptionOrNullable<boolean>;
