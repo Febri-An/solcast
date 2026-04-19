@@ -8,11 +8,10 @@ import { SolanaProvider } from "@solana/react-hooks";
 import { ProfileModal } from "./profile-modal";
 import { ToastProvider } from "./toast";
 import { ProfileProvider } from "../hooks/use-profile";
-
-const DEVNET_RPC_URL = "https://api.devnet.solana.com";
+import { SOLANA_RPC_URL } from "../lib/solana-rpc";
 
 const client = createClient({
-  endpoint: DEVNET_RPC_URL,
+  endpoint: SOLANA_RPC_URL,
   walletConnectors: autoDiscover(),
   commitment: "confirmed",
 });

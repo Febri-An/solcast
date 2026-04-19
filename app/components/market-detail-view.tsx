@@ -20,9 +20,8 @@ import {
 } from "../lib/market-format";
 import { getAssetLabelForFeed, getTradingViewSymbolForFeed } from "../lib/price-feeds";
 import { TradingViewChart } from "./tradingview-chart";
+import { SOLANA_RPC_URL } from "../lib/solana-rpc";
 import { useToast } from "./toast";
-
-const DEVNET_RPC_URL = "https://api.devnet.solana.com";
 
 type DetailTab = "chart" | "rules" | "context";
 
@@ -416,7 +415,7 @@ export function MarketDetailView({ marketAddress }: MarketDetailViewProps): Reac
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(DEVNET_RPC_URL, {
+      const response = await fetch(SOLANA_RPC_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

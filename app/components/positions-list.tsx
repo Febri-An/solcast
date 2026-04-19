@@ -16,10 +16,10 @@ import {
   type UserPosition,
 } from "../generated/prediction_market/accounts/userPosition";
 import { ActivityStats } from "./activity-stats";
+import { SOLANA_RPC_URL } from "../lib/solana-rpc";
 import { PositionCard } from "./position-card";
 
 const USER_POSITION_DISCRIMINATOR_BASE58 = "j9SjDYAWesU";
-const DEVNET_RPC_URL = "https://api.devnet.solana.com";
 const POLL_INTERVAL_MS = 3000;
 
 interface PositionWithMarket {
@@ -55,7 +55,7 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
     if (!walletAddress) return;
 
     try {
-      const positionsResponse = await fetch(DEVNET_RPC_URL, {
+      const positionsResponse = await fetch(SOLANA_RPC_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -115,7 +115,7 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
       const marketMap = new Map<string, Market>();
 
       if (marketAddresses.length > 0) {
-        const marketsResponse = await fetch(DEVNET_RPC_URL, {
+        const marketsResponse = await fetch(SOLANA_RPC_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

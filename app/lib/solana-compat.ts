@@ -23,10 +23,10 @@ import {
 import type { Wallet } from "@coral-xyz/anchor";
 import type { WalletSession } from "@solana/client";
 
-const DEVNET_RPC_URL = "https://api.devnet.solana.com";
+import { SOLANA_RPC_URL } from "./solana-rpc";
 
 export function getWeb3Connection(): Connection {
-  return new Connection(DEVNET_RPC_URL, "confirmed");
+  return new Connection(SOLANA_RPC_URL, "confirmed");
 }
 
 export function createAnchorWallet(session: WalletSession): Wallet {

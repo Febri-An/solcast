@@ -26,9 +26,9 @@ import {
 } from "../generated/prediction_market/accounts/userPosition";
 
 import { LAMPORTS_PER_SOL } from "../lib/market-format";
+import { SOLANA_RPC_URL } from "../lib/solana-rpc";
 import { useProfile } from "./use-profile";
 
-const DEVNET_RPC_URL = "https://api.devnet.solana.com";
 const POSITION_SEED = new Uint8Array([112, 111, 115, 105, 116, 105, 111, 110]);
 const POLL_INTERVAL_MS = 3000;
 const STATUS_CLEAR_DELAY_MS = 3000;
@@ -50,7 +50,7 @@ async function fetchUserPositionFromRpc(
     ],
   });
 
-  const response = await fetch(DEVNET_RPC_URL, {
+  const response = await fetch(SOLANA_RPC_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

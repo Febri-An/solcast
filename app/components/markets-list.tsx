@@ -10,10 +10,10 @@ import {
   PREDICTION_MARKET_PROGRAM_ADDRESS,
 } from "../generated/prediction_market";
 import { isOpenForBetting } from "../lib/market-format";
+import { SOLANA_RPC_URL } from "../lib/solana-rpc";
 import { MarketCard } from "./market-card";
 
 const MARKET_DISCRIMINATOR_BASE58 = "dkokXHR3DTw";
-const DEVNET_RPC_URL = "https://api.devnet.solana.com";
 const POLL_INTERVAL_MS = 3000;
 
 interface MarketWithAddress {
@@ -38,7 +38,7 @@ export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps):
     setError(null);
 
     try {
-      const response = await fetch(DEVNET_RPC_URL, {
+      const response = await fetch(SOLANA_RPC_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
