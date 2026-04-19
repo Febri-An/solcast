@@ -9,7 +9,11 @@
     "dev": "next dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "keeper:dry": "tsx keeper/src/index.ts --dry-run",
+    "keeper:start": "tsx keeper/src/index.ts",
+    "keeper:verbose": "tsx keeper/src/index.ts --verbose",
     "lint": "eslint",
+    "postinstall": "node keeper/postinstall.mjs",
     "setup": "npm run anchor-build && npm run codama:js",
     "start": "next start"
   },
@@ -35,6 +39,8 @@
     "@solana/react-hooks": "1.1.5",
     "@solana/web3.js": "^1.98.4",
     "@supabase/supabase-js": "^2.103.0",
+    "bs58": "^6.0.0",
+    "dotenv": "^17.4.2",
     "next": "16.0.10",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -52,6 +58,7 @@
     "eslint-config-next": "16.0.10",
     "prettier": "^3.6.2",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
