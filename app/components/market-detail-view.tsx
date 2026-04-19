@@ -11,10 +11,12 @@ import { getMarketDecoder, type Market } from "../generated/prediction_market";
 import { useMarketTrading, unwrapOutcome } from "../hooks/use-market-trading";
 import { useProfile } from "../hooks/use-profile";
 import {
+  formatCountdownMmSs,
   formatSol,
   formatUsdWhole,
   formatVolume,
   getTimeRemaining,
+  isShortLiveWindowMarket,
 } from "../lib/market-format";
 import { getAssetLabelForFeed, getTradingViewSymbolForFeed } from "../lib/price-feeds";
 import { TradingViewChart } from "./tradingview-chart";
@@ -23,6 +25,17 @@ import { useToast } from "./toast";
 const DEVNET_RPC_URL = "https://api.devnet.solana.com";
 
 type DetailTab = "chart" | "rules" | "context";
+
+function useShortLiveCountdown(resolutionTimeSec: number, active: boolean): string {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [active, resolutionTimeSec]);
+  const diff = resolutionTimeSec - Date.now() / 1000;
+  return formatCountdownMmSs(diff);
+}
 
 interface MarketDetailViewProps {
   marketAddress: Address;
@@ -74,6 +87,10 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
 
   const canTrade = canBet && status === "connected" && (!profileConfigured || isProfileComplete);
 
+  const shortLiveWindow = isShortLiveWindowMarket(market);
+  const shortLiveCountdownActive = Boolean(canBet && !isResolved && shortLiveWindow);
+  const shortLiveEndsLabel = useShortLiveCountdown(resolutionTime, shortLiveCountdownActive);
+
   const tvSymbol = getTradingViewSymbolForFeed(market.feedId);
   const assetLabel = getAssetLabelForFeed(market.feedId);
   const outcome = unwrapOutcome(market.outcome);
@@ -121,7 +138,11 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                     d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                {canBet ? `Ends in ${getTimeRemaining(resolutionTime)}` : "Awaiting resolution"}
+                {canBet
+                  ? shortLiveWindow
+                    ? `Ends in ${shortLiveEndsLabel}`
+                    : `Ends in ${getTimeRemaining(resolutionTime)}`
+                  : "Awaiting resolution"}
               </span>
             )}
             {isResolved && outcome !== null && (

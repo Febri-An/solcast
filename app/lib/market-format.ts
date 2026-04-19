@@ -24,6 +24,15 @@ export function getTimeRemaining(resolutionTime: number): string {
   return `${Math.floor(diff / 86400)}d`;
 }
 
+/** Remaining time as M:SS (floored whole seconds). Used for short-window live countdowns. */
+export function formatCountdownMmSs(remainingSec: number): string {
+  if (remainingSec <= 0) return "0:00";
+  const total = Math.floor(remainingSec);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 export function formatUsdWhole(value: bigint): string {
   return Number(value).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
