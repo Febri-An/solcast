@@ -360,6 +360,7 @@ export function MarketCard({
 
   /* ——— Compact row: pending resolve or resolved ——— */
   const rowInGrid = isGrid;
+  const isPendingResolveGrid = rowInGrid && !isResolved && !canBet;
   return (
     <div
       className={
@@ -368,7 +369,11 @@ export function MarketCard({
           : `group border-b border-border-low last:border-b-0 transition-colors hover:bg-bg2/60 ${className ?? ""}`
       }
     >
-      <div className={`relative flex items-center gap-4 ${rowInGrid ? "px-4 py-3" : "px-4 py-3.5 sm:px-5"}`}>
+      <div
+        className={`relative flex items-center gap-4 ${
+          rowInGrid ? (isPendingResolveGrid ? "px-4 py-4" : "px-4 py-3") : "px-4 py-3.5 sm:px-5"
+        }`}
+      >
         <Link
           href={`/market/${marketAddress}`}
           className="absolute inset-0 z-0 rounded-none"
@@ -376,8 +381,14 @@ export function MarketCard({
         />
 
         <div className="relative z-[1] flex-1 min-w-0 pointer-events-none">
-          <div className="flex items-center gap-2.5 mb-0.5">
-            <h3 className="text-[15px] font-medium leading-snug text-foreground truncate">
+          <div className="flex items-center pb-2 gap-2.5 mb-0.5">
+            <h3
+              className={`text-[15px] font-medium leading-snug text-foreground ${
+                isPendingResolveGrid
+                  ? "line-clamp-3 min-h-[3.875rem] break-words"
+                  : "truncate"
+              }`}
+            >
               {market.question}
             </h3>
             {isResolved && (
@@ -394,33 +405,12 @@ export function MarketCard({
           </div>
           <div className="flex items-center gap-3 text-xs text-muted">
             <span className="flex items-center gap-1">
-              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 10v1"
-                />
-              </svg>
-              {formatVolume(totalPool)} SOL
+              {formatVolume(totalPool)} SOL vol.
             </span>
-            {!isResolved && (
-              <span className="flex items-center gap-1">
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                {canBet ? getTimeRemaining(resolutionTime) : "Pending resolve"}
-              </span>
-            )}
           </div>
         </div>
 
-        <div className="relative z-[1] hidden sm:flex items-center gap-2 shrink-0 pointer-events-none">
+        {/* <div className="relative z-[1] hidden sm:flex items-center gap-2 shrink-0 pointer-events-none">
           <div className="w-24 h-1.5 rounded-full bg-bg3 overflow-hidden flex">
             <div
               className="bg-green transition-all duration-500"
@@ -428,7 +418,7 @@ export function MarketCard({
             />
           </div>
           <span className="text-xs text-muted font-mono w-8 text-right">{yesPercent}%</span>
-        </div>
+        </div> */}
 
         <div className="relative z-10 flex items-center gap-2 shrink-0 pointer-events-auto">
           {canTrade && (

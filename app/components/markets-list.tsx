@@ -21,7 +21,7 @@ interface MarketWithAddress {
   market: Market;
 }
 
-type FilterTab = "active" | "past";
+type FilterTab = "active" | "pending" | "past";
 
 export function MarketsList(): ReactNode {
   const [markets, setMarkets] = useState<MarketWithAddress[]>([]);
@@ -98,25 +98,34 @@ export function MarketsList(): ReactNode {
     return () => clearInterval(interval);
   }, [fetchMarkets]);
 
-  const { activeMarkets, pastMarkets } = useMemo(() => {
-    const active: MarketWithAddress[] = [];
+  const { bettingMarkets, pendingResolveMarkets, pastMarkets } = useMemo(() => {
+    const betting: MarketWithAddress[] = [];
+    const pending: MarketWithAddress[] = [];
     const past: MarketWithAddress[] = [];
 
     for (const item of markets) {
       if (item.market.resolved) {
         past.push(item);
+      } else if (isOpenForBetting(item.market)) {
+        betting.push(item);
       } else {
-        active.push(item);
+        pending.push(item);
       }
     }
 
-    active.sort((a, b) => Number(a.market.resolutionTime - b.market.resolutionTime));
+    betting.sort((a, b) => Number(a.market.resolutionTime - b.market.resolutionTime));
+    pending.sort((a, b) => Number(a.market.resolutionTime - b.market.resolutionTime));
     past.sort((a, b) => Number(b.market.resolutionTime - a.market.resolutionTime));
 
-    return { activeMarkets: active, pastMarkets: past };
+    return { bettingMarkets: betting, pendingResolveMarkets: pending, pastMarkets: past };
   }, [markets]);
 
-  const displayedMarkets = activeTab === "active" ? activeMarkets : pastMarkets;
+  const displayedMarkets =
+    activeTab === "active"
+      ? bettingMarkets
+      : activeTab === "pending"
+        ? pendingResolveMarkets
+        : pastMarkets;
 
   if (loading && markets.length === 0) {
     return (
@@ -177,7 +186,7 @@ export function MarketsList(): ReactNode {
     <div className="space-y-4">
       {/* Tab bar */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 rounded-xl bg-bg2 border border-border-low p-1">
+        <div className="flex flex-wrap items-center gap-1 rounded-xl bg-bg2 border border-border-low p-1">
           <button
             onClick={() => setActiveTab("active")}
             className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
@@ -187,9 +196,24 @@ export function MarketsList(): ReactNode {
             }`}
           >
             Active
-            {activeMarkets.length > 0 && (
+            {bettingMarkets.length > 0 && (
               <span className={`ml-1.5 text-xs ${activeTab === "active" ? "text-foreground-secondary" : "text-muted"}`}>
-                {activeMarkets.length}
+                {bettingMarkets.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("pending")}
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+              activeTab === "pending"
+                ? "!cursor-default bg-bg3 text-foreground shadow-sm"
+                : "text-muted hover:text-foreground-secondary"
+            }`}
+          >
+            Pending resolve
+            {pendingResolveMarkets.length > 0 && (
+              <span className={`ml-1.5 text-xs ${activeTab === "pending" ? "text-foreground-secondary" : "text-muted"}`}>
+                {pendingResolveMarkets.length}
               </span>
             )}
           </button>
@@ -227,28 +251,24 @@ export function MarketsList(): ReactNode {
           <p className="text-sm text-muted">
             {activeTab === "active"
               ? "No active markets. Create one to get started!"
-              : "No resolved markets yet."}
+              : activeTab === "pending"
+                ? "No markets awaiting resolution."
+                : "No resolved markets yet."}
           </p>
         </div>
-      ) : activeTab === "active" ? (
+      ) : activeTab === "active" || activeTab === "pending" ? (
         <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {displayedMarkets.map((item) => {
-            const spanFull = !isOpenForBetting(item.market);
-            return (
-              <div
-                key={item.address}
-                className={`min-w-0 flex flex-col ${spanFull ? "col-span-full sm:col-span-2 lg:col-span-4" : ""}`}
-              >
-                <MarketCard
-                  market={item.market}
-                  marketAddress={item.address}
-                  onUpdate={fetchMarkets}
-                  density="grid"
-                  className="h-full min-h-0"
-                />
-              </div>
-            );
-          })}
+          {displayedMarkets.map((item) => (
+            <div key={item.address} className="min-w-0 flex flex-col">
+              <MarketCard
+                market={item.market}
+                marketAddress={item.address}
+                onUpdate={fetchMarkets}
+                density="grid"
+                className="h-full min-h-0"
+              />
+            </div>
+          ))}
         </div>
       ) : (
         <div className="rounded-2xl border border-border-low bg-bg2 overflow-hidden divide-y divide-border-low">
