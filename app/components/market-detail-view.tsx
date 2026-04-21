@@ -20,7 +20,6 @@ import {
 } from "../lib/market-format";
 import { getAssetLabelForFeed, getTradingViewSymbolForFeed } from "../lib/price-feeds";
 import { TradingViewChart } from "./tradingview-chart";
-import { SOLANA_RPC_URL } from "../lib/solana-rpc";
 import { useToast } from "./toast";
 
 type DetailTab = "chart" | "rules" | "context";
@@ -415,26 +414,23 @@ export function MarketDetailView({ marketAddress }: MarketDetailViewProps): Reac
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(SOLANA_RPC_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "getAccountInfo",
-          params: [marketAddress, { encoding: "base64", commitment: "confirmed" }],
-        }),
-      });
-      const result = await response.json();
-      if (result.error) {
-        throw new Error(result.error.message ?? "RPC error");
+      const response = await fetch(
+        `/api/markets/${encodeURIComponent(marketAddress)}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${response.status}`);
       }
-      if (!result.result?.value?.data?.[0]) {
-        throw new Error("Market account not found on devnet");
+      const payload = (await response.json()) as {
+        market: { address: string; accountDataBase64: string };
+      };
+      const b64 = payload.market?.accountDataBase64;
+      if (!b64) {
+        throw new Error("Market not found");
       }
-      const data = Uint8Array.from(atob(result.result.value.data[0]), (c) => c.charCodeAt(0));
-      const decoded = getMarketDecoder().decode(data);
-      setMarket(decoded);
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      setMarket(getMarketDecoder().decode(bytes));
     } catch (e) {
       setMarket(null);
       setError(e instanceof Error ? e.message : "Failed to load market");

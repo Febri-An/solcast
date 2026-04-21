@@ -6,20 +6,14 @@ import Link from "next/link";
 
 import { type Address } from "@solana/kit";
 
-import {
-  getMarketDecoder,
-  type Market,
-  PREDICTION_MARKET_PROGRAM_ADDRESS,
-} from "../generated/prediction_market";
+import { getMarketDecoder, type Market } from "../generated/prediction_market";
 import {
   getUserPositionDecoder,
   type UserPosition,
 } from "../generated/prediction_market/accounts/userPosition";
 import { ActivityStats } from "./activity-stats";
-import { SOLANA_RPC_URL } from "../lib/solana-rpc";
 import { PositionCard } from "./position-card";
 
-const USER_POSITION_DISCRIMINATOR_BASE58 = "j9SjDYAWesU";
 const POLL_INTERVAL_MS = 3000;
 
 interface PositionWithMarket {
@@ -55,99 +49,47 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
     if (!walletAddress) return;
 
     try {
-      const positionsResponse = await fetch(SOLANA_RPC_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "getProgramAccounts",
-          params: [
-            PREDICTION_MARKET_PROGRAM_ADDRESS,
-            {
-              encoding: "base64",
-              commitment: "confirmed",
-              filters: [
-                {
-                  memcmp: {
-                    offset: 0,
-                    bytes: USER_POSITION_DISCRIMINATOR_BASE58,
-                  },
-                },
-                {
-                  memcmp: {
-                    offset: 40,
-                    bytes: walletAddress,
-                  },
-                },
-              ],
-            },
-          ],
-        }),
-      });
-
-      const positionsResult = await positionsResponse.json();
-
-      if (positionsResult.error) {
-        throw new Error(positionsResult.error.message);
+      const response = await fetch(
+        `/api/positions?wallet=${encodeURIComponent(walletAddress)}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        const errBody = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errBody.error ?? `HTTP ${response.status}`);
       }
 
-      const positionDecoder = getUserPositionDecoder();
-      const decodedPositions: Array<{ address: Address; position: UserPosition }> = [];
+      const payload = (await response.json()) as {
+        positions: Array<{
+          address: string;
+          marketAddress: string;
+          accountDataBase64: string;
+        }>;
+        markets: Array<{ address: string; accountDataBase64: string }>;
+      };
 
-      for (const account of positionsResult.result || []) {
+      const positionDecoder = getUserPositionDecoder();
+      const marketDecoder = getMarketDecoder();
+
+      const marketMap = new Map<string, Market>();
+      for (const m of payload.markets ?? []) {
         try {
-          const data = Uint8Array.from(atob(account.account.data[0]), (c) =>
-            c.charCodeAt(0)
-          );
-          const position = positionDecoder.decode(data);
-          decodedPositions.push({
-            address: account.pubkey as Address,
-            position,
-          });
-        } catch (decodeError) {
-          console.warn("Failed to decode position:", account.pubkey, decodeError);
+          const bytes = Uint8Array.from(atob(m.accountDataBase64), (c) => c.charCodeAt(0));
+          marketMap.set(m.address, marketDecoder.decode(bytes));
+        } catch {
+          console.warn("Failed to decode market:", m.address);
         }
       }
 
-      const marketAddresses = [...new Set(decodedPositions.map((p) => p.position.market))];
-
-      const marketMap = new Map<string, Market>();
-
-      if (marketAddresses.length > 0) {
-        const marketsResponse = await fetch(SOLANA_RPC_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "getMultipleAccounts",
-            params: [
-              marketAddresses,
-              { encoding: "base64", commitment: "confirmed" },
-            ],
-          }),
-        });
-
-        const marketsResult = await marketsResponse.json();
-        const marketDecoder = getMarketDecoder();
-
-        if (marketsResult.result?.value) {
-          marketsResult.result.value.forEach(
-            (account: { data: string[] } | null, index: number) => {
-              if (account && account.data) {
-                try {
-                  const data = Uint8Array.from(atob(account.data[0]), (c) =>
-                    c.charCodeAt(0)
-                  );
-                  const market = marketDecoder.decode(data);
-                  marketMap.set(marketAddresses[index], market);
-                } catch {
-                  console.warn("Failed to decode market:", marketAddresses[index]);
-                }
-              }
-            }
-          );
+      const decodedPositions: Array<{ address: Address; position: UserPosition }> = [];
+      for (const p of payload.positions ?? []) {
+        try {
+          const bytes = Uint8Array.from(atob(p.accountDataBase64), (c) => c.charCodeAt(0));
+          decodedPositions.push({
+            address: p.address as Address,
+            position: positionDecoder.decode(bytes),
+          });
+        } catch (decodeError) {
+          console.warn("Failed to decode position:", p.address, decodeError);
         }
       }
 

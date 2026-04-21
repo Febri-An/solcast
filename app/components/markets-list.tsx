@@ -4,16 +4,10 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 
 import { type Address } from "@solana/kit";
 
-import {
-  getMarketDecoder,
-  type Market,
-  PREDICTION_MARKET_PROGRAM_ADDRESS,
-} from "../generated/prediction_market";
+import { getMarketDecoder, type Market } from "../generated/prediction_market";
 import { isOpenForBetting } from "../lib/market-format";
-import { SOLANA_RPC_URL } from "../lib/solana-rpc";
 import { MarketCard } from "./market-card";
 
-const MARKET_DISCRIMINATOR_BASE58 = "dkokXHR3DTw";
 const POLL_INTERVAL_MS = 3000;
 
 interface MarketWithAddress {
@@ -38,50 +32,29 @@ export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps):
     setError(null);
 
     try {
-      const response = await fetch(SOLANA_RPC_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "getProgramAccounts",
-          params: [
-            PREDICTION_MARKET_PROGRAM_ADDRESS,
-            {
-              encoding: "base64",
-              commitment: "confirmed",
-              filters: [
-                {
-                  memcmp: {
-                    offset: 0,
-                    bytes: MARKET_DISCRIMINATOR_BASE58,
-                  },
-                },
-              ],
-            },
-          ],
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.error) {
-        throw new Error(result.error.message);
+      const response = await fetch("/api/markets", { cache: "no-store" });
+      if (!response.ok) {
+        const errBody = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errBody.error ?? `HTTP ${response.status}`);
       }
+
+      const result = (await response.json()) as {
+        markets: Array<{ address: string; accountDataBase64: string }>;
+      };
 
       const decoder = getMarketDecoder();
       const fetchedMarkets: MarketWithAddress[] = [];
 
-      for (const account of result.result || []) {
+      for (const row of result.markets ?? []) {
         try {
-          const data = Uint8Array.from(atob(account.account.data[0]), c => c.charCodeAt(0));
+          const data = Uint8Array.from(atob(row.accountDataBase64), (c) => c.charCodeAt(0));
           const market = decoder.decode(data);
           fetchedMarkets.push({
-            address: account.pubkey as Address,
+            address: row.address as Address,
             market,
           });
         } catch (decodeError) {
-          console.warn("Failed to decode market account:", account.pubkey, decodeError);
+          console.warn("Failed to decode market account:", row.address, decodeError);
         }
       }
 

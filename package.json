@@ -13,6 +13,7 @@
     "keeper:start": "tsx keeper/src/index.ts",
     "keeper:verbose": "tsx keeper/src/index.ts --verbose",
     "lint": "eslint",
+    "markets:sync": "tsx scripts/markets-sync.ts",
     "postinstall": "node keeper/postinstall.mjs",
     "setup": "npm run anchor-build && npm run codama:js",
     "start": "next start"

@@ -2,21 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import {
-  type Address,
-  type Option,
-  getAddressEncoder,
-  getBytesEncoder,
-  getProgramDerivedAddress,
-  isSome,
-} from "@solana/kit";
+import { type Address, type Option, isSome } from "@solana/kit";
 import { useSendTransaction, useWalletConnection } from "@solana/react-hooks";
 
 import {
   getClaimWinningsInstructionAsync,
   getPlaceBetInstructionAsync,
   type Market,
-  PREDICTION_MARKET_PROGRAM_ADDRESS,
 } from "../generated/prediction_market";
 import { resolveMarketWithPyth } from "../lib/pyth";
 import { createAnchorWallet, getWeb3Connection } from "../lib/solana-compat";
@@ -26,10 +18,8 @@ import {
 } from "../generated/prediction_market/accounts/userPosition";
 
 import { LAMPORTS_PER_SOL } from "../lib/market-format";
-import { SOLANA_RPC_URL } from "../lib/solana-rpc";
 import { useProfile } from "./use-profile";
 
-const POSITION_SEED = new Uint8Array([112, 111, 115, 105, 116, 105, 111, 110]);
 const POLL_INTERVAL_MS = 3000;
 const STATUS_CLEAR_DELAY_MS = 3000;
 
@@ -37,38 +27,23 @@ export function unwrapOutcome(option: Option<boolean>): boolean | null {
   return isSome(option) ? option.value : null;
 }
 
-async function fetchUserPositionFromRpc(
+async function fetchUserPosition(
   marketAddress: Address,
   walletAddress: Address,
 ): Promise<UserPosition | null> {
-  const positionAddress = await getProgramDerivedAddress({
-    programAddress: PREDICTION_MARKET_PROGRAM_ADDRESS,
-    seeds: [
-      getBytesEncoder().encode(POSITION_SEED),
-      getAddressEncoder().encode(marketAddress),
-      getAddressEncoder().encode(walletAddress),
-    ],
-  });
-
-  const response = await fetch(SOLANA_RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "getAccountInfo",
-      params: [positionAddress[0], { encoding: "base64", commitment: "confirmed" }],
-    }),
-  });
-
-  const result = await response.json();
-
-  if (!result.result?.value) {
-    return null;
+  const url = `/api/positions?wallet=${encodeURIComponent(walletAddress)}&market=${encodeURIComponent(marketAddress)}`;
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${response.status}`);
   }
-
-  const data = Uint8Array.from(atob(result.result.value.data[0]), (c) => c.charCodeAt(0));
-  return getUserPositionDecoder().decode(data);
+  const payload = (await response.json()) as {
+    positions: Array<{ address: string; marketAddress: string; accountDataBase64: string }>;
+  };
+  const row = payload.positions?.[0];
+  if (!row) return null;
+  const bytes = Uint8Array.from(atob(row.accountDataBase64), (c) => c.charCodeAt(0));
+  return getUserPositionDecoder().decode(bytes);
 }
 
 export interface UseMarketTradingOptions {
@@ -104,7 +79,7 @@ export function useMarketTrading(
         return;
       }
       try {
-        const position = await fetchUserPositionFromRpc(marketAddress, walletAddress);
+        const position = await fetchUserPosition(marketAddress, walletAddress);
         setUserPosition(position);
       } catch (err) {
         console.warn("Failed to fetch user position:", err);
