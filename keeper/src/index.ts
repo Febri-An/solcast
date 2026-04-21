@@ -18,6 +18,8 @@ import { loadConfig, type KeeperConfig } from "./config";
 import { loadKeypair, keypairWallet } from "./wallet";
 import { fetchAllMarkets, type MarketRecord } from "./markets";
 import { resolveMarketWithPyth } from "../../app/lib/pyth";
+import { makeSupabaseClient, runCacheSyncOnce } from "./cache-sync";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const PRICE_TIMESTAMP_TOLERANCE_SECONDS = 30;
 const RESOLVE_GRACE_PERIOD_SECONDS = 30 * 60;
@@ -154,6 +156,51 @@ async function runCycle(
   }
 }
 
+function startCacheSync(config: KeeperConfig): { stop: () => void } {
+  const { enabled, intervalMs, supabaseUrl, serviceRoleKey } = config.cacheSync;
+  if (!enabled) {
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.log(
+        "[cache-sync] disabled (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set)",
+      );
+    } else {
+      console.log("[cache-sync] disabled via KEEPER_CACHE_SYNC_DISABLED=true");
+    }
+    return { stop: () => {} };
+  }
+
+  const supabase: SupabaseClient = makeSupabaseClient(supabaseUrl!, serviceRoleKey!);
+  let running = false;
+
+  const tick = async () => {
+    if (running) {
+      // Previous sync still in flight — skip this tick, try again next interval.
+      return;
+    }
+    running = true;
+    try {
+      const { markets, positions, durationMs } = await runCacheSyncOnce(
+        supabase,
+        config.rpcUrl,
+      );
+      console.log(
+        `[cache-sync] markets upsert=${markets.upserted} del=${markets.deleted} | positions upsert=${positions.upserted} del=${positions.deleted} | ${durationMs}ms`,
+      );
+    } catch (err) {
+      console.error("[cache-sync] failed:", (err as Error).message);
+    } finally {
+      running = false;
+    }
+  };
+
+  // Run immediately on startup so the cache is warm before the first user hit.
+  void tick();
+  const handle = setInterval(tick, intervalMs);
+  return {
+    stop: () => clearInterval(handle),
+  };
+}
+
 async function main() {
   const config = loadConfig();
   const kp = loadKeypair(config.keypairPath);
@@ -168,6 +215,9 @@ async function main() {
   console.log(`Poll interval:  ${config.pollIntervalMs}ms`);
   console.log(`Max per cycle:  ${config.maxMarketsPerCycle}`);
   console.log(`Dry run:        ${config.dryRun}`);
+  console.log(
+    `Cache sync:     ${config.cacheSync.enabled ? `ON every ${config.cacheSync.intervalMs}ms` : "OFF"}`,
+  );
   console.log("================================");
 
   try {
@@ -185,10 +235,13 @@ async function main() {
   const inFlight = new Set<string>();
   let stopping = false;
 
+  const cacheSync = startCacheSync(config);
+
   const shutdown = (sig: string) => {
     if (stopping) return;
     stopping = true;
     console.log(`\n[shutdown] received ${sig}, exiting after current cycle…`);
+    cacheSync.stop();
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
@@ -203,6 +256,7 @@ async function main() {
     await new Promise((r) => setTimeout(r, config.pollIntervalMs));
   }
 
+  cacheSync.stop();
   console.log("[shutdown] bye");
   process.exit(0);
 }

@@ -4,6 +4,27 @@ The DB cache (`markets_cache` + `positions_cache`) auto-bootstraps on first
 request, but a scheduler keeps it **fresh** without depending on user traffic.
 Any of the options below works — pick one.
 
+## 0. Embed in the keeper bot (recommended for local/dev, simplest) ✅
+
+If you're already running `npm run keeper:start` (locally or on a VPS via
+`pm2`), the keeper **already does this automatically** on a 60s interval.
+Nothing extra to configure as long as `NEXT_PUBLIC_SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` are present in the project-root `.env`.
+
+- Tune interval via `KEEPER_CACHE_SYNC_INTERVAL_MS`
+- Disable via `KEEPER_CACHE_SYNC_DISABLED=true` when you move to one of the
+  options below
+
+You'll see log lines like:
+
+```
+[cache-sync] markets upsert=21 del=0 | positions upsert=34 del=1 | 430ms
+```
+
+Good for single-machine deployments. When you scale to multiple app
+instances (or stop running the keeper locally), switch to one of the
+following.
+
 ## 1. Vercel Cron (if you deploy to Vercel)
 
 Add to `vercel.json` at the project root:

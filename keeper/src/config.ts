@@ -5,8 +5,12 @@ import dotenv from "dotenv";
 import { PublicKey } from "@solana/web3.js";
 
 const KEEPER_DIR = path.resolve(__dirname, "..");
+const PROJECT_ROOT = path.resolve(KEEPER_DIR, "..");
 
+// Load keeper-specific .env first (higher priority), then the project-root .env
+// so Supabase credentials shared with the Next.js app are picked up automatically.
 dotenv.config({ path: path.join(KEEPER_DIR, ".env") });
+dotenv.config({ path: path.join(PROJECT_ROOT, ".env") });
 
 export type KeeperConfig = {
   rpcUrl: string;
@@ -17,6 +21,12 @@ export type KeeperConfig = {
   maxMarketsPerCycle: number;
   dryRun: boolean;
   verbose: boolean;
+  cacheSync: {
+    enabled: boolean;
+    intervalMs: number;
+    supabaseUrl?: string;
+    serviceRoleKey?: string;
+  };
 };
 
 function expandPath(input: string): string {
@@ -80,6 +90,18 @@ export function loadConfig(): KeeperConfig {
   const verbose =
     process.argv.includes("--verbose") || process.env.KEEPER_VERBOSE === "true";
 
+  const cacheSyncIntervalMs = parseNumber(
+    "KEEPER_CACHE_SYNC_INTERVAL_MS",
+    process.env.KEEPER_CACHE_SYNC_INTERVAL_MS,
+    60_000,
+  );
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || undefined;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined;
+  // Default ON when Supabase is configured and user hasn't explicitly disabled it.
+  const cacheSyncDisabled = process.env.KEEPER_CACHE_SYNC_DISABLED === "true";
+  const cacheSyncEnabled =
+    !cacheSyncDisabled && Boolean(supabaseUrl && serviceRoleKey);
+
   return {
     rpcUrl,
     keypairPath,
@@ -89,5 +111,11 @@ export function loadConfig(): KeeperConfig {
     maxMarketsPerCycle,
     dryRun,
     verbose,
+    cacheSync: {
+      enabled: cacheSyncEnabled,
+      intervalMs: cacheSyncIntervalMs,
+      supabaseUrl,
+      serviceRoleKey,
+    },
   };
 }

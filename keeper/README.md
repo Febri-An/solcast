@@ -27,6 +27,17 @@ The on-chain program enforces a `±30s` tolerance between Pyth's `publish_time`
 and the market's `resolution_time`, so late resolves cannot bias the outcome
 with more recent prices.
 
+### Embedded cache sync
+
+The same process also refreshes Supabase `markets_cache` / `positions_cache`
+on an independent interval (default **60s**). This keeps the frontend DB in
+sync with chain state without needing a separate cron runner while you're in
+local dev. It activates automatically if `NEXT_PUBLIC_SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` are set in the project-root `.env`.
+
+Turn it off with `KEEPER_CACHE_SYNC_DISABLED=true` once you deploy a real
+cron (Vercel Cron, GitHub Actions, `pg_cron`, etc. — see `docs/CRON.md`).
+
 ## Setup
 
 ```bash
@@ -85,6 +96,8 @@ See `.env.example` for all variables. Common tweaks:
 | `KEEPER_MIN_LIQUIDITY_SOL`    | `0.01`    | Skip markets with lower pool (anti-spam)     |
 | `KEEPER_POLL_INTERVAL_MS`     | `15000`   | How often to scan                            |
 | `KEEPER_MAX_MARKETS_PER_CYCLE`| `5`       | Throttle per cycle                           |
+| `KEEPER_CACHE_SYNC_INTERVAL_MS` | `60000` | How often to refresh Supabase cache          |
+| `KEEPER_CACHE_SYNC_DISABLED`  | `false`   | Force cache sync off                         |
 
 ## Safety notes
 
@@ -108,6 +121,7 @@ keeper/
     config.ts      # env parsing
     wallet.ts      # keypair → Anchor Wallet
     markets.ts     # getProgramAccounts + Codama decoder
+    cache-sync.ts  # Supabase markets/positions cache refresh (shared with /api/markets/sync)
     index.ts       # main loop
 ```
 
