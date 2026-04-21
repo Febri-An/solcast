@@ -15,6 +15,14 @@ use state::{Market, UserPosition, MAX_QUESTION_LEN};
 const PRICE_TIMESTAMP_TOLERANCE_SECONDS: i64 = 30;
 const RESOLVE_GRACE_PERIOD_SECONDS: i64 = 30 * 60;
 
+/// Only this wallet may create markets. Rotating the admin requires
+/// redeploying the program (upgrade to a Config PDA if that becomes a pain).
+/// Base58: `B3WBoPbb2a98NrqRXBEe4P49irNCH8PEA4xzKzaYhXXr`
+pub const ADMIN: Pubkey = Pubkey::new_from_array([
+    149, 57, 8, 37, 217, 54, 152, 179, 44, 242, 47, 141, 161, 3, 240, 203, 134, 245, 19, 209, 131,
+    219, 239, 89, 154, 143, 19, 236, 94, 165, 186, 69,
+]);
+
 declare_id!("DYy72hMhhyHvbPjy71pp4137U4FumNuzM6i3mLVU2MWk");
 
 #[program]
@@ -29,6 +37,11 @@ pub mod prediction_market {
         feed_id: [u8; 32],
         target_price: i64,
     ) -> Result<()> {
+        require_keys_eq!(
+            ctx.accounts.creator.key(),
+            ADMIN,
+            MarketError::Unauthorized
+        );
         require!(question.len() <= MAX_QUESTION_LEN, MarketError::Overflow);
         require!(target_price > 0, MarketError::InvalidTargetPrice);
 

@@ -38,6 +38,8 @@ export const PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE = 0x1779; // 6009
 export const PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED = 0x177a; // 6010
 /** InvalidPriceTimestamp: Price update timestamp is outside the allowed resolution window */
 export const PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP = 0x177b; // 6011
+/** Unauthorized: Only the admin can perform this action */
+export const PREDICTION_MARKET_ERROR__UNAUTHORIZED = 0x177c; // 6012
 
 export type PredictionMarketError =
   | typeof PREDICTION_MARKET_ERROR__ALREADY_CLAIMED
@@ -51,7 +53,8 @@ export type PredictionMarketError =
   | typeof PREDICTION_MARKET_ERROR__OVERFLOW
   | typeof PREDICTION_MARKET_ERROR__RESOLUTION_TIME_IN_PAST
   | typeof PREDICTION_MARKET_ERROR__RESOLUTION_TOO_EARLY
-  | typeof PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED;
+  | typeof PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED
+  | typeof PREDICTION_MARKET_ERROR__UNAUTHORIZED;
 
 let predictionMarketErrorMessages:
   | Record<PredictionMarketError, string>
@@ -70,6 +73,7 @@ if (process.env.NODE_ENV !== "production") {
     [PREDICTION_MARKET_ERROR__RESOLUTION_TIME_IN_PAST]: `Resolution time must be in the future`,
     [PREDICTION_MARKET_ERROR__RESOLUTION_TOO_EARLY]: `Market cannot be resolved yet`,
     [PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED]: `Resolve window has closed`,
+    [PREDICTION_MARKET_ERROR__UNAUTHORIZED]: `Only the admin can perform this action`,
   };
 }
 

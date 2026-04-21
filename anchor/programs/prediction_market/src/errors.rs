@@ -26,4 +26,6 @@ pub enum MarketError {
     ResolveWindowClosed,
     #[msg("Price update timestamp is outside the allowed resolution window")]
     InvalidPriceTimestamp,
+    #[msg("Only the admin can perform this action")]
+    Unauthorized,
 }

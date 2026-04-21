@@ -81,12 +81,20 @@ function HowItWorks(): ReactNode {
   );
 }
 
+const ADMIN_WALLET = process.env.NEXT_PUBLIC_ADMIN_WALLET;
+
 export default function Home(): ReactNode {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [marketsTab, setMarketsTab] = useState<MarketsFilterTab>("active");
   const { showToast } = useToast();
-  const { status } = useWalletConnection();
+  const { status, wallet } = useWalletConnection();
   const { isComplete: isProfileComplete, configured, openProfileModal } = useProfile();
+
+  const currentAddress =
+    status === "connected" ? wallet?.account.address.toString() : undefined;
+  const isAdmin = Boolean(
+    ADMIN_WALLET && currentAddress && currentAddress === ADMIN_WALLET,
+  );
 
   function handleNewMarketClick(): void {
     if (configured && status === "connected" && !isProfileComplete) {
@@ -148,7 +156,7 @@ export default function Home(): ReactNode {
               Trade on crypto price outcomes. Powered by Pyth oracles on Solana.
             </p>
           </div>
-          {marketsTab === "active" && (
+          {marketsTab === "active" && isAdmin && (
             <button
               type="button"
               onClick={handleNewMarketClick}
@@ -164,7 +172,7 @@ export default function Home(): ReactNode {
           )}
         </div>
 
-        {showCreateForm && (
+        {showCreateForm && isAdmin && (
           <div className="mb-6">
             <CreateMarketForm
               onCreated={() => {
