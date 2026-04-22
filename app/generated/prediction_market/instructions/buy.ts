@@ -43,15 +43,15 @@ import {
   type ResolvedAccount,
 } from "../shared";
 
-export const PLACE_BET_DISCRIMINATOR = new Uint8Array([
-  222, 62, 67, 220, 63, 166, 126, 33,
+export const BUY_DISCRIMINATOR = new Uint8Array([
+  102, 6, 61, 18, 1, 218, 235, 234,
 ]);
 
-export function getPlaceBetDiscriminatorBytes() {
-  return fixEncoderSize(getBytesEncoder(), 8).encode(PLACE_BET_DISCRIMINATOR);
+export function getBuyDiscriminatorBytes() {
+  return fixEncoderSize(getBytesEncoder(), 8).encode(BUY_DISCRIMINATOR);
 }
 
-export type PlaceBetInstruction<
+export type BuyInstruction<
   TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
   TAccountUser extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
@@ -79,47 +79,51 @@ export type PlaceBetInstruction<
     ]
   >;
 
-export type PlaceBetInstructionData = {
+export type BuyInstructionData = {
   discriminator: ReadonlyUint8Array;
-  amount: bigint;
-  betYes: boolean;
+  amountIn: bigint;
+  buyYes: boolean;
+  minSharesOut: bigint;
 };
 
-export type PlaceBetInstructionDataArgs = {
-  amount: number | bigint;
-  betYes: boolean;
+export type BuyInstructionDataArgs = {
+  amountIn: number | bigint;
+  buyYes: boolean;
+  minSharesOut: number | bigint;
 };
 
-export function getPlaceBetInstructionDataEncoder(): FixedSizeEncoder<PlaceBetInstructionDataArgs> {
+export function getBuyInstructionDataEncoder(): FixedSizeEncoder<BuyInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["amount", getU64Encoder()],
-      ["betYes", getBooleanEncoder()],
+      ["amountIn", getU64Encoder()],
+      ["buyYes", getBooleanEncoder()],
+      ["minSharesOut", getU64Encoder()],
     ]),
-    (value) => ({ ...value, discriminator: PLACE_BET_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: BUY_DISCRIMINATOR }),
   );
 }
 
-export function getPlaceBetInstructionDataDecoder(): FixedSizeDecoder<PlaceBetInstructionData> {
+export function getBuyInstructionDataDecoder(): FixedSizeDecoder<BuyInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["amount", getU64Decoder()],
-    ["betYes", getBooleanDecoder()],
+    ["amountIn", getU64Decoder()],
+    ["buyYes", getBooleanDecoder()],
+    ["minSharesOut", getU64Decoder()],
   ]);
 }
 
-export function getPlaceBetInstructionDataCodec(): FixedSizeCodec<
-  PlaceBetInstructionDataArgs,
-  PlaceBetInstructionData
+export function getBuyInstructionDataCodec(): FixedSizeCodec<
+  BuyInstructionDataArgs,
+  BuyInstructionData
 > {
   return combineCodec(
-    getPlaceBetInstructionDataEncoder(),
-    getPlaceBetInstructionDataDecoder(),
+    getBuyInstructionDataEncoder(),
+    getBuyInstructionDataDecoder(),
   );
 }
 
-export type PlaceBetAsyncInput<
+export type BuyAsyncInput<
   TAccountUser extends string = string,
   TAccountMarket extends string = string,
   TAccountUserPosition extends string = string,
@@ -129,18 +133,19 @@ export type PlaceBetAsyncInput<
   market: Address<TAccountMarket>;
   userPosition?: Address<TAccountUserPosition>;
   systemProgram?: Address<TAccountSystemProgram>;
-  amount: PlaceBetInstructionDataArgs["amount"];
-  betYes: PlaceBetInstructionDataArgs["betYes"];
+  amountIn: BuyInstructionDataArgs["amountIn"];
+  buyYes: BuyInstructionDataArgs["buyYes"];
+  minSharesOut: BuyInstructionDataArgs["minSharesOut"];
 };
 
-export async function getPlaceBetInstructionAsync<
+export async function getBuyInstructionAsync<
   TAccountUser extends string,
   TAccountMarket extends string,
   TAccountUserPosition extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
 >(
-  input: PlaceBetAsyncInput<
+  input: BuyAsyncInput<
     TAccountUser,
     TAccountMarket,
     TAccountUserPosition,
@@ -148,7 +153,7 @@ export async function getPlaceBetInstructionAsync<
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
-  PlaceBetInstruction<
+  BuyInstruction<
     TProgramAddress,
     TAccountUser,
     TAccountMarket,
@@ -201,11 +206,9 @@ export async function getPlaceBetInstructionAsync<
       getAccountMeta(accounts.userPosition),
       getAccountMeta(accounts.systemProgram),
     ],
-    data: getPlaceBetInstructionDataEncoder().encode(
-      args as PlaceBetInstructionDataArgs,
-    ),
+    data: getBuyInstructionDataEncoder().encode(args as BuyInstructionDataArgs),
     programAddress,
-  } as PlaceBetInstruction<
+  } as BuyInstruction<
     TProgramAddress,
     TAccountUser,
     TAccountMarket,
@@ -214,7 +217,7 @@ export async function getPlaceBetInstructionAsync<
   >);
 }
 
-export type PlaceBetInput<
+export type BuyInput<
   TAccountUser extends string = string,
   TAccountMarket extends string = string,
   TAccountUserPosition extends string = string,
@@ -224,25 +227,26 @@ export type PlaceBetInput<
   market: Address<TAccountMarket>;
   userPosition: Address<TAccountUserPosition>;
   systemProgram?: Address<TAccountSystemProgram>;
-  amount: PlaceBetInstructionDataArgs["amount"];
-  betYes: PlaceBetInstructionDataArgs["betYes"];
+  amountIn: BuyInstructionDataArgs["amountIn"];
+  buyYes: BuyInstructionDataArgs["buyYes"];
+  minSharesOut: BuyInstructionDataArgs["minSharesOut"];
 };
 
-export function getPlaceBetInstruction<
+export function getBuyInstruction<
   TAccountUser extends string,
   TAccountMarket extends string,
   TAccountUserPosition extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
 >(
-  input: PlaceBetInput<
+  input: BuyInput<
     TAccountUser,
     TAccountMarket,
     TAccountUserPosition,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
-): PlaceBetInstruction<
+): BuyInstruction<
   TProgramAddress,
   TAccountUser,
   TAccountMarket,
@@ -282,11 +286,9 @@ export function getPlaceBetInstruction<
       getAccountMeta(accounts.userPosition),
       getAccountMeta(accounts.systemProgram),
     ],
-    data: getPlaceBetInstructionDataEncoder().encode(
-      args as PlaceBetInstructionDataArgs,
-    ),
+    data: getBuyInstructionDataEncoder().encode(args as BuyInstructionDataArgs),
     programAddress,
-  } as PlaceBetInstruction<
+  } as BuyInstruction<
     TProgramAddress,
     TAccountUser,
     TAccountMarket,
@@ -295,7 +297,7 @@ export function getPlaceBetInstruction<
   >);
 }
 
-export type ParsedPlaceBetInstruction<
+export type ParsedBuyInstruction<
   TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
@@ -306,17 +308,17 @@ export type ParsedPlaceBetInstruction<
     userPosition: TAccountMetas[2];
     systemProgram: TAccountMetas[3];
   };
-  data: PlaceBetInstructionData;
+  data: BuyInstructionData;
 };
 
-export function parsePlaceBetInstruction<
+export function parseBuyInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedPlaceBetInstruction<TProgram, TAccountMetas> {
+): ParsedBuyInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 4) {
     // TODO: Coded error.
     throw new Error("Not enough accounts");
@@ -335,6 +337,6 @@ export function parsePlaceBetInstruction<
       userPosition: getNextAccount(),
       systemProgram: getNextAccount(),
     },
-    data: getPlaceBetInstructionDataDecoder().decode(instruction.data),
+    data: getBuyInstructionDataDecoder().decode(instruction.data),
   };
 }

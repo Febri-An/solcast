@@ -16,9 +16,9 @@ import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
 
 /** ResolutionTimeInPast: Resolution time must be in the future */
 export const PREDICTION_MARKET_ERROR__RESOLUTION_TIME_IN_PAST = 0x1770; // 6000
-/** BettingClosed: Betting is closed for this market */
+/** BettingClosed: Trading is closed for this market */
 export const PREDICTION_MARKET_ERROR__BETTING_CLOSED = 0x1771; // 6001
-/** InvalidBetAmount: Bet amount must be greater than zero */
+/** InvalidBetAmount: Amount must be greater than zero */
 export const PREDICTION_MARKET_ERROR__INVALID_BET_AMOUNT = 0x1772; // 6002
 /** ResolutionTooEarly: Market cannot be resolved yet */
 export const PREDICTION_MARKET_ERROR__RESOLUTION_TOO_EARLY = 0x1773; // 6003
@@ -26,34 +26,52 @@ export const PREDICTION_MARKET_ERROR__RESOLUTION_TOO_EARLY = 0x1773; // 6003
 export const PREDICTION_MARKET_ERROR__ALREADY_RESOLVED = 0x1774; // 6004
 /** NotResolved: Market has not been resolved yet */
 export const PREDICTION_MARKET_ERROR__NOT_RESOLVED = 0x1775; // 6005
-/** AlreadyClaimed: Winnings have already been claimed */
-export const PREDICTION_MARKET_ERROR__ALREADY_CLAIMED = 0x1776; // 6006
 /** NoWinnings: No winnings to claim */
-export const PREDICTION_MARKET_ERROR__NO_WINNINGS = 0x1777; // 6007
+export const PREDICTION_MARKET_ERROR__NO_WINNINGS = 0x1776; // 6006
 /** Overflow: Arithmetic overflow */
-export const PREDICTION_MARKET_ERROR__OVERFLOW = 0x1778; // 6008
+export const PREDICTION_MARKET_ERROR__OVERFLOW = 0x1777; // 6007
 /** InvalidTargetPrice: Target price must be greater than zero */
-export const PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE = 0x1779; // 6009
+export const PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE = 0x1778; // 6008
 /** ResolveWindowClosed: Resolve window has closed */
-export const PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED = 0x177a; // 6010
+export const PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED = 0x1779; // 6009
 /** InvalidPriceTimestamp: Price update timestamp is outside the allowed resolution window */
-export const PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP = 0x177b; // 6011
+export const PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP = 0x177a; // 6010
 /** Unauthorized: Only the admin can perform this action */
-export const PREDICTION_MARKET_ERROR__UNAUTHORIZED = 0x177c; // 6012
+export const PREDICTION_MARKET_ERROR__UNAUTHORIZED = 0x177b; // 6011
+/** InvalidFee: Swap fee in basis points is above the allowed maximum */
+export const PREDICTION_MARKET_ERROR__INVALID_FEE = 0x177c; // 6012
+/** InitialLiquidityTooLow: Initial liquidity is below the required minimum */
+export const PREDICTION_MARKET_ERROR__INITIAL_LIQUIDITY_TOO_LOW = 0x177d; // 6013
+/** SlippageExceeded: Computed output is below the requested minimum (slippage too high) */
+export const PREDICTION_MARKET_ERROR__SLIPPAGE_EXCEEDED = 0x177e; // 6014
+/** PoolDepleted: Pool has insufficient shares to fulfil the swap */
+export const PREDICTION_MARKET_ERROR__POOL_DEPLETED = 0x177f; // 6015
+/** InsufficientShares: User does not hold enough shares for this operation */
+export const PREDICTION_MARKET_ERROR__INSUFFICIENT_SHARES = 0x1780; // 6016
+/** LiquidityAlreadyWithdrawn: Liquidity has already been withdrawn */
+export const PREDICTION_MARKET_ERROR__LIQUIDITY_ALREADY_WITHDRAWN = 0x1781; // 6017
+/** TradingAfterResolve: Trading is not allowed after market resolve */
+export const PREDICTION_MARKET_ERROR__TRADING_AFTER_RESOLVE = 0x1782; // 6018
 
 export type PredictionMarketError =
-  | typeof PREDICTION_MARKET_ERROR__ALREADY_CLAIMED
   | typeof PREDICTION_MARKET_ERROR__ALREADY_RESOLVED
   | typeof PREDICTION_MARKET_ERROR__BETTING_CLOSED
+  | typeof PREDICTION_MARKET_ERROR__INITIAL_LIQUIDITY_TOO_LOW
+  | typeof PREDICTION_MARKET_ERROR__INSUFFICIENT_SHARES
   | typeof PREDICTION_MARKET_ERROR__INVALID_BET_AMOUNT
+  | typeof PREDICTION_MARKET_ERROR__INVALID_FEE
   | typeof PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP
   | typeof PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE
+  | typeof PREDICTION_MARKET_ERROR__LIQUIDITY_ALREADY_WITHDRAWN
   | typeof PREDICTION_MARKET_ERROR__NOT_RESOLVED
   | typeof PREDICTION_MARKET_ERROR__NO_WINNINGS
   | typeof PREDICTION_MARKET_ERROR__OVERFLOW
+  | typeof PREDICTION_MARKET_ERROR__POOL_DEPLETED
   | typeof PREDICTION_MARKET_ERROR__RESOLUTION_TIME_IN_PAST
   | typeof PREDICTION_MARKET_ERROR__RESOLUTION_TOO_EARLY
   | typeof PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED
+  | typeof PREDICTION_MARKET_ERROR__SLIPPAGE_EXCEEDED
+  | typeof PREDICTION_MARKET_ERROR__TRADING_AFTER_RESOLVE
   | typeof PREDICTION_MARKET_ERROR__UNAUTHORIZED;
 
 let predictionMarketErrorMessages:
@@ -61,18 +79,24 @@ let predictionMarketErrorMessages:
   | undefined;
 if (process.env.NODE_ENV !== "production") {
   predictionMarketErrorMessages = {
-    [PREDICTION_MARKET_ERROR__ALREADY_CLAIMED]: `Winnings have already been claimed`,
     [PREDICTION_MARKET_ERROR__ALREADY_RESOLVED]: `Market has already been resolved`,
-    [PREDICTION_MARKET_ERROR__BETTING_CLOSED]: `Betting is closed for this market`,
-    [PREDICTION_MARKET_ERROR__INVALID_BET_AMOUNT]: `Bet amount must be greater than zero`,
+    [PREDICTION_MARKET_ERROR__BETTING_CLOSED]: `Trading is closed for this market`,
+    [PREDICTION_MARKET_ERROR__INITIAL_LIQUIDITY_TOO_LOW]: `Initial liquidity is below the required minimum`,
+    [PREDICTION_MARKET_ERROR__INSUFFICIENT_SHARES]: `User does not hold enough shares for this operation`,
+    [PREDICTION_MARKET_ERROR__INVALID_BET_AMOUNT]: `Amount must be greater than zero`,
+    [PREDICTION_MARKET_ERROR__INVALID_FEE]: `Swap fee in basis points is above the allowed maximum`,
     [PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP]: `Price update timestamp is outside the allowed resolution window`,
     [PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE]: `Target price must be greater than zero`,
+    [PREDICTION_MARKET_ERROR__LIQUIDITY_ALREADY_WITHDRAWN]: `Liquidity has already been withdrawn`,
     [PREDICTION_MARKET_ERROR__NOT_RESOLVED]: `Market has not been resolved yet`,
     [PREDICTION_MARKET_ERROR__NO_WINNINGS]: `No winnings to claim`,
     [PREDICTION_MARKET_ERROR__OVERFLOW]: `Arithmetic overflow`,
+    [PREDICTION_MARKET_ERROR__POOL_DEPLETED]: `Pool has insufficient shares to fulfil the swap`,
     [PREDICTION_MARKET_ERROR__RESOLUTION_TIME_IN_PAST]: `Resolution time must be in the future`,
     [PREDICTION_MARKET_ERROR__RESOLUTION_TOO_EARLY]: `Market cannot be resolved yet`,
     [PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED]: `Resolve window has closed`,
+    [PREDICTION_MARKET_ERROR__SLIPPAGE_EXCEEDED]: `Computed output is below the requested minimum (slippage too high)`,
+    [PREDICTION_MARKET_ERROR__TRADING_AFTER_RESOLVE]: `Trading is not allowed after market resolve`,
     [PREDICTION_MARKET_ERROR__UNAUTHORIZED]: `Only the admin can perform this action`,
   };
 }

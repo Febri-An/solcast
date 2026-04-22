@@ -7,34 +7,26 @@
  */
 
 import {
-  addDecoderSizePrefix,
-  addEncoderSizePrefix,
   combineCodec,
   fixDecoderSize,
   fixEncoderSize,
   getAddressEncoder,
+  getBooleanDecoder,
+  getBooleanEncoder,
   getBytesDecoder,
   getBytesEncoder,
-  getI64Decoder,
-  getI64Encoder,
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
-  getU16Decoder,
-  getU16Encoder,
-  getU32Decoder,
-  getU32Encoder,
   getU64Decoder,
   getU64Encoder,
-  getUtf8Decoder,
-  getUtf8Encoder,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
   type Address,
-  type Codec,
-  type Decoder,
-  type Encoder,
+  type FixedSizeCodec,
+  type FixedSizeDecoder,
+  type FixedSizeEncoder,
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
@@ -47,25 +39,23 @@ import {
 import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
 import {
   expectAddress,
-  expectSome,
   getAccountMetaFactory,
   type ResolvedAccount,
 } from "../shared";
 
-export const CREATE_MARKET_DISCRIMINATOR = new Uint8Array([
-  103, 226, 97, 235, 200, 188, 251, 254,
+export const SELL_DISCRIMINATOR = new Uint8Array([
+  51, 230, 133, 164, 1, 127, 131, 173,
 ]);
 
-export function getCreateMarketDiscriminatorBytes() {
-  return fixEncoderSize(getBytesEncoder(), 8).encode(
-    CREATE_MARKET_DISCRIMINATOR,
-  );
+export function getSellDiscriminatorBytes() {
+  return fixEncoderSize(getBytesEncoder(), 8).encode(SELL_DISCRIMINATOR);
 }
 
-export type CreateMarketInstruction<
+export type SellInstruction<
   TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
-  TAccountCreator extends string | AccountMeta<string> = string,
+  TAccountUser extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
+  TAccountUserPosition extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -73,13 +63,15 @@ export type CreateMarketInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountCreator extends string
-        ? WritableSignerAccount<TAccountCreator> &
-            AccountSignerMeta<TAccountCreator>
-        : TAccountCreator,
+      TAccountUser extends string
+        ? WritableSignerAccount<TAccountUser> & AccountSignerMeta<TAccountUser>
+        : TAccountUser,
       TAccountMarket extends string
         ? WritableAccount<TAccountMarket>
         : TAccountMarket,
+      TAccountUserPosition extends string
+        ? WritableAccount<TAccountUserPosition>
+        : TAccountUserPosition,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
@@ -87,100 +79,85 @@ export type CreateMarketInstruction<
     ]
   >;
 
-export type CreateMarketInstructionData = {
+export type SellInstructionData = {
   discriminator: ReadonlyUint8Array;
-  marketId: bigint;
-  question: string;
-  resolutionTime: bigint;
-  feedId: ReadonlyUint8Array;
-  targetPrice: bigint;
-  initialLiquidity: bigint;
-  feeBps: number;
+  sharesIn: bigint;
+  sellYes: boolean;
+  minSolOut: bigint;
 };
 
-export type CreateMarketInstructionDataArgs = {
-  marketId: number | bigint;
-  question: string;
-  resolutionTime: number | bigint;
-  feedId: ReadonlyUint8Array;
-  targetPrice: number | bigint;
-  initialLiquidity: number | bigint;
-  feeBps: number;
+export type SellInstructionDataArgs = {
+  sharesIn: number | bigint;
+  sellYes: boolean;
+  minSolOut: number | bigint;
 };
 
-export function getCreateMarketInstructionDataEncoder(): Encoder<CreateMarketInstructionDataArgs> {
+export function getSellInstructionDataEncoder(): FixedSizeEncoder<SellInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["marketId", getU64Encoder()],
-      ["question", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
-      ["resolutionTime", getI64Encoder()],
-      ["feedId", fixEncoderSize(getBytesEncoder(), 32)],
-      ["targetPrice", getI64Encoder()],
-      ["initialLiquidity", getU64Encoder()],
-      ["feeBps", getU16Encoder()],
+      ["sharesIn", getU64Encoder()],
+      ["sellYes", getBooleanEncoder()],
+      ["minSolOut", getU64Encoder()],
     ]),
-    (value) => ({ ...value, discriminator: CREATE_MARKET_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: SELL_DISCRIMINATOR }),
   );
 }
 
-export function getCreateMarketInstructionDataDecoder(): Decoder<CreateMarketInstructionData> {
+export function getSellInstructionDataDecoder(): FixedSizeDecoder<SellInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["marketId", getU64Decoder()],
-    ["question", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
-    ["resolutionTime", getI64Decoder()],
-    ["feedId", fixDecoderSize(getBytesDecoder(), 32)],
-    ["targetPrice", getI64Decoder()],
-    ["initialLiquidity", getU64Decoder()],
-    ["feeBps", getU16Decoder()],
+    ["sharesIn", getU64Decoder()],
+    ["sellYes", getBooleanDecoder()],
+    ["minSolOut", getU64Decoder()],
   ]);
 }
 
-export function getCreateMarketInstructionDataCodec(): Codec<
-  CreateMarketInstructionDataArgs,
-  CreateMarketInstructionData
+export function getSellInstructionDataCodec(): FixedSizeCodec<
+  SellInstructionDataArgs,
+  SellInstructionData
 > {
   return combineCodec(
-    getCreateMarketInstructionDataEncoder(),
-    getCreateMarketInstructionDataDecoder(),
+    getSellInstructionDataEncoder(),
+    getSellInstructionDataDecoder(),
   );
 }
 
-export type CreateMarketAsyncInput<
-  TAccountCreator extends string = string,
+export type SellAsyncInput<
+  TAccountUser extends string = string,
   TAccountMarket extends string = string,
+  TAccountUserPosition extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
-  creator: TransactionSigner<TAccountCreator>;
-  market?: Address<TAccountMarket>;
+  user: TransactionSigner<TAccountUser>;
+  market: Address<TAccountMarket>;
+  userPosition?: Address<TAccountUserPosition>;
   systemProgram?: Address<TAccountSystemProgram>;
-  marketId: CreateMarketInstructionDataArgs["marketId"];
-  question: CreateMarketInstructionDataArgs["question"];
-  resolutionTime: CreateMarketInstructionDataArgs["resolutionTime"];
-  feedId: CreateMarketInstructionDataArgs["feedId"];
-  targetPrice: CreateMarketInstructionDataArgs["targetPrice"];
-  initialLiquidity: CreateMarketInstructionDataArgs["initialLiquidity"];
-  feeBps: CreateMarketInstructionDataArgs["feeBps"];
+  sharesIn: SellInstructionDataArgs["sharesIn"];
+  sellYes: SellInstructionDataArgs["sellYes"];
+  minSolOut: SellInstructionDataArgs["minSolOut"];
 };
 
-export async function getCreateMarketInstructionAsync<
-  TAccountCreator extends string,
+export async function getSellInstructionAsync<
+  TAccountUser extends string,
   TAccountMarket extends string,
+  TAccountUserPosition extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
 >(
-  input: CreateMarketAsyncInput<
-    TAccountCreator,
+  input: SellAsyncInput<
+    TAccountUser,
     TAccountMarket,
+    TAccountUserPosition,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
-  CreateMarketInstruction<
+  SellInstruction<
     TProgramAddress,
-    TAccountCreator,
+    TAccountUser,
     TAccountMarket,
+    TAccountUserPosition,
     TAccountSystemProgram
   >
 > {
@@ -190,8 +167,9 @@ export async function getCreateMarketInstructionAsync<
 
   // Original accounts.
   const originalAccounts = {
-    creator: { value: input.creator ?? null, isWritable: true },
+    user: { value: input.user ?? null, isWritable: true },
     market: { value: input.market ?? null, isWritable: true },
+    userPosition: { value: input.userPosition ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -203,13 +181,15 @@ export async function getCreateMarketInstructionAsync<
   const args = { ...input };
 
   // Resolve default values.
-  if (!accounts.market.value) {
-    accounts.market.value = await getProgramDerivedAddress({
+  if (!accounts.userPosition.value) {
+    accounts.userPosition.value = await getProgramDerivedAddress({
       programAddress,
       seeds: [
-        getBytesEncoder().encode(new Uint8Array([109, 97, 114, 107, 101, 116])),
-        getAddressEncoder().encode(expectAddress(accounts.creator.value)),
-        getU64Encoder().encode(expectSome(args.marketId)),
+        getBytesEncoder().encode(
+          new Uint8Array([112, 111, 115, 105, 116, 105, 111, 110]),
+        ),
+        getAddressEncoder().encode(expectAddress(accounts.market.value)),
+        getAddressEncoder().encode(expectAddress(accounts.user.value)),
       ],
     });
   }
@@ -221,55 +201,58 @@ export async function getCreateMarketInstructionAsync<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.creator),
+      getAccountMeta(accounts.user),
       getAccountMeta(accounts.market),
+      getAccountMeta(accounts.userPosition),
       getAccountMeta(accounts.systemProgram),
     ],
-    data: getCreateMarketInstructionDataEncoder().encode(
-      args as CreateMarketInstructionDataArgs,
+    data: getSellInstructionDataEncoder().encode(
+      args as SellInstructionDataArgs,
     ),
     programAddress,
-  } as CreateMarketInstruction<
+  } as SellInstruction<
     TProgramAddress,
-    TAccountCreator,
+    TAccountUser,
     TAccountMarket,
+    TAccountUserPosition,
     TAccountSystemProgram
   >);
 }
 
-export type CreateMarketInput<
-  TAccountCreator extends string = string,
+export type SellInput<
+  TAccountUser extends string = string,
   TAccountMarket extends string = string,
+  TAccountUserPosition extends string = string,
   TAccountSystemProgram extends string = string,
 > = {
-  creator: TransactionSigner<TAccountCreator>;
+  user: TransactionSigner<TAccountUser>;
   market: Address<TAccountMarket>;
+  userPosition: Address<TAccountUserPosition>;
   systemProgram?: Address<TAccountSystemProgram>;
-  marketId: CreateMarketInstructionDataArgs["marketId"];
-  question: CreateMarketInstructionDataArgs["question"];
-  resolutionTime: CreateMarketInstructionDataArgs["resolutionTime"];
-  feedId: CreateMarketInstructionDataArgs["feedId"];
-  targetPrice: CreateMarketInstructionDataArgs["targetPrice"];
-  initialLiquidity: CreateMarketInstructionDataArgs["initialLiquidity"];
-  feeBps: CreateMarketInstructionDataArgs["feeBps"];
+  sharesIn: SellInstructionDataArgs["sharesIn"];
+  sellYes: SellInstructionDataArgs["sellYes"];
+  minSolOut: SellInstructionDataArgs["minSolOut"];
 };
 
-export function getCreateMarketInstruction<
-  TAccountCreator extends string,
+export function getSellInstruction<
+  TAccountUser extends string,
   TAccountMarket extends string,
+  TAccountUserPosition extends string,
   TAccountSystemProgram extends string,
   TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
 >(
-  input: CreateMarketInput<
-    TAccountCreator,
+  input: SellInput<
+    TAccountUser,
     TAccountMarket,
+    TAccountUserPosition,
     TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
-): CreateMarketInstruction<
+): SellInstruction<
   TProgramAddress,
-  TAccountCreator,
+  TAccountUser,
   TAccountMarket,
+  TAccountUserPosition,
   TAccountSystemProgram
 > {
   // Program address.
@@ -278,8 +261,9 @@ export function getCreateMarketInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    creator: { value: input.creator ?? null, isWritable: true },
+    user: { value: input.user ?? null, isWritable: true },
     market: { value: input.market ?? null, isWritable: true },
+    userPosition: { value: input.userPosition ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -299,44 +283,47 @@ export function getCreateMarketInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.creator),
+      getAccountMeta(accounts.user),
       getAccountMeta(accounts.market),
+      getAccountMeta(accounts.userPosition),
       getAccountMeta(accounts.systemProgram),
     ],
-    data: getCreateMarketInstructionDataEncoder().encode(
-      args as CreateMarketInstructionDataArgs,
+    data: getSellInstructionDataEncoder().encode(
+      args as SellInstructionDataArgs,
     ),
     programAddress,
-  } as CreateMarketInstruction<
+  } as SellInstruction<
     TProgramAddress,
-    TAccountCreator,
+    TAccountUser,
     TAccountMarket,
+    TAccountUserPosition,
     TAccountSystemProgram
   >);
 }
 
-export type ParsedCreateMarketInstruction<
+export type ParsedSellInstruction<
   TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    creator: TAccountMetas[0];
+    user: TAccountMetas[0];
     market: TAccountMetas[1];
-    systemProgram: TAccountMetas[2];
+    userPosition: TAccountMetas[2];
+    systemProgram: TAccountMetas[3];
   };
-  data: CreateMarketInstructionData;
+  data: SellInstructionData;
 };
 
-export function parseCreateMarketInstruction<
+export function parseSellInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedCreateMarketInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 3) {
+): ParsedSellInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 4) {
     // TODO: Coded error.
     throw new Error("Not enough accounts");
   }
@@ -349,10 +336,11 @@ export function parseCreateMarketInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      creator: getNextAccount(),
+      user: getNextAccount(),
       market: getNextAccount(),
+      userPosition: getNextAccount(),
       systemProgram: getNextAccount(),
     },
-    data: getCreateMarketInstructionDataDecoder().decode(instruction.data),
+    data: getSellInstructionDataDecoder().decode(instruction.data),
   };
 }

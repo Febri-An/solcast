@@ -17,8 +17,6 @@ import {
   fixEncoderSize,
   getAddressDecoder,
   getAddressEncoder,
-  getBooleanDecoder,
-  getBooleanEncoder,
   getBytesDecoder,
   getBytesEncoder,
   getStructDecoder,
@@ -53,32 +51,18 @@ export function getUserPositionDiscriminatorBytes() {
 
 export type UserPosition = {
   discriminator: ReadonlyUint8Array;
-  /** The market this position is for */
   market: Address;
-  /** The user who owns this position */
   user: Address;
-  /** Lamports bet on YES */
-  yesAmount: bigint;
-  /** Lamports bet on NO */
-  noAmount: bigint;
-  /** Whether winnings have been claimed */
-  claimed: boolean;
-  /** PDA bump seed */
+  yesShares: bigint;
+  noShares: bigint;
   bump: number;
 };
 
 export type UserPositionArgs = {
-  /** The market this position is for */
   market: Address;
-  /** The user who owns this position */
   user: Address;
-  /** Lamports bet on YES */
-  yesAmount: number | bigint;
-  /** Lamports bet on NO */
-  noAmount: number | bigint;
-  /** Whether winnings have been claimed */
-  claimed: boolean;
-  /** PDA bump seed */
+  yesShares: number | bigint;
+  noShares: number | bigint;
   bump: number;
 };
 
@@ -89,9 +73,8 @@ export function getUserPositionEncoder(): FixedSizeEncoder<UserPositionArgs> {
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["market", getAddressEncoder()],
       ["user", getAddressEncoder()],
-      ["yesAmount", getU64Encoder()],
-      ["noAmount", getU64Encoder()],
-      ["claimed", getBooleanEncoder()],
+      ["yesShares", getU64Encoder()],
+      ["noShares", getU64Encoder()],
       ["bump", getU8Encoder()],
     ]),
     (value) => ({ ...value, discriminator: USER_POSITION_DISCRIMINATOR }),
@@ -104,9 +87,8 @@ export function getUserPositionDecoder(): FixedSizeDecoder<UserPosition> {
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["market", getAddressDecoder()],
     ["user", getAddressDecoder()],
-    ["yesAmount", getU64Decoder()],
-    ["noAmount", getU64Decoder()],
-    ["claimed", getBooleanDecoder()],
+    ["yesShares", getU64Decoder()],
+    ["noShares", getU64Decoder()],
     ["bump", getU8Decoder()],
   ]);
 }
@@ -173,5 +155,5 @@ export async function fetchAllMaybeUserPosition(
 }
 
 export function getUserPositionSize(): number {
-  return 90;
+  return 89;
 }

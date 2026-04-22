@@ -29,6 +29,8 @@ import {
   getOptionEncoder,
   getStructDecoder,
   getStructEncoder,
+  getU16Decoder,
+  getU16Encoder,
   getU32Decoder,
   getU32Encoder,
   getU64Decoder,
@@ -71,11 +73,22 @@ export type Market = {
   feedId: ReadonlyUint8Array;
   /** Target price in whole USD (e.g. 79000 = $79,000). YES = price above target. */
   targetPrice: bigint;
-  yesPool: bigint;
-  noPool: bigint;
-  /** Whether the market has been resolved */
+  /** YES shares currently held by the AMM pool. */
+  yesShares: bigint;
+  /** NO shares currently held by the AMM pool. */
+  noShares: bigint;
+  /** Sum of `yes_shares` across all `UserPosition`s. Used for solvency checks. */
+  yesSupplyUser: bigint;
+  /** Sum of `no_shares` across all `UserPosition`s. */
+  noSupplyUser: bigint;
+  /** Swap fee in basis points (1 bp = 0.01%). `200` = 2%. */
+  feeBps: number;
+  /** Admin's initial SOL deposit (== starting `yes_shares` == starting `no_shares`). */
+  initialLiquidity: bigint;
+  /** Set once the admin has claimed the LP side of the pool after resolve. */
+  liquidityWithdrawn: boolean;
   resolved: boolean;
-  /** Some(true) = price was above target (YES won) */
+  /** `Some(true)` = YES won, `Some(false)` = NO won. */
   outcome: Option<boolean>;
   bump: number;
 };
@@ -89,11 +102,22 @@ export type MarketArgs = {
   feedId: ReadonlyUint8Array;
   /** Target price in whole USD (e.g. 79000 = $79,000). YES = price above target. */
   targetPrice: number | bigint;
-  yesPool: number | bigint;
-  noPool: number | bigint;
-  /** Whether the market has been resolved */
+  /** YES shares currently held by the AMM pool. */
+  yesShares: number | bigint;
+  /** NO shares currently held by the AMM pool. */
+  noShares: number | bigint;
+  /** Sum of `yes_shares` across all `UserPosition`s. Used for solvency checks. */
+  yesSupplyUser: number | bigint;
+  /** Sum of `no_shares` across all `UserPosition`s. */
+  noSupplyUser: number | bigint;
+  /** Swap fee in basis points (1 bp = 0.01%). `200` = 2%. */
+  feeBps: number;
+  /** Admin's initial SOL deposit (== starting `yes_shares` == starting `no_shares`). */
+  initialLiquidity: number | bigint;
+  /** Set once the admin has claimed the LP side of the pool after resolve. */
+  liquidityWithdrawn: boolean;
   resolved: boolean;
-  /** Some(true) = price was above target (YES won) */
+  /** `Some(true)` = YES won, `Some(false)` = NO won. */
   outcome: OptionOrNullable<boolean>;
   bump: number;
 };
@@ -109,8 +133,13 @@ export function getMarketEncoder(): Encoder<MarketArgs> {
       ["resolutionTime", getI64Encoder()],
       ["feedId", fixEncoderSize(getBytesEncoder(), 32)],
       ["targetPrice", getI64Encoder()],
-      ["yesPool", getU64Encoder()],
-      ["noPool", getU64Encoder()],
+      ["yesShares", getU64Encoder()],
+      ["noShares", getU64Encoder()],
+      ["yesSupplyUser", getU64Encoder()],
+      ["noSupplyUser", getU64Encoder()],
+      ["feeBps", getU16Encoder()],
+      ["initialLiquidity", getU64Encoder()],
+      ["liquidityWithdrawn", getBooleanEncoder()],
       ["resolved", getBooleanEncoder()],
       ["outcome", getOptionEncoder(getBooleanEncoder())],
       ["bump", getU8Encoder()],
@@ -129,8 +158,13 @@ export function getMarketDecoder(): Decoder<Market> {
     ["resolutionTime", getI64Decoder()],
     ["feedId", fixDecoderSize(getBytesDecoder(), 32)],
     ["targetPrice", getI64Decoder()],
-    ["yesPool", getU64Decoder()],
-    ["noPool", getU64Decoder()],
+    ["yesShares", getU64Decoder()],
+    ["noShares", getU64Decoder()],
+    ["yesSupplyUser", getU64Decoder()],
+    ["noSupplyUser", getU64Decoder()],
+    ["feeBps", getU16Decoder()],
+    ["initialLiquidity", getU64Decoder()],
+    ["liquidityWithdrawn", getBooleanDecoder()],
     ["resolved", getBooleanDecoder()],
     ["outcome", getOptionDecoder(getBooleanDecoder())],
     ["bump", getU8Decoder()],

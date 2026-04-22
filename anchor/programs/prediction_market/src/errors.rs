@@ -4,9 +4,9 @@ use anchor_lang::prelude::*;
 pub enum MarketError {
     #[msg("Resolution time must be in the future")]
     ResolutionTimeInPast,
-    #[msg("Betting is closed for this market")]
+    #[msg("Trading is closed for this market")]
     BettingClosed,
-    #[msg("Bet amount must be greater than zero")]
+    #[msg("Amount must be greater than zero")]
     InvalidBetAmount,
     #[msg("Market cannot be resolved yet")]
     ResolutionTooEarly,
@@ -14,8 +14,6 @@ pub enum MarketError {
     AlreadyResolved,
     #[msg("Market has not been resolved yet")]
     NotResolved,
-    #[msg("Winnings have already been claimed")]
-    AlreadyClaimed,
     #[msg("No winnings to claim")]
     NoWinnings,
     #[msg("Arithmetic overflow")]
@@ -28,4 +26,20 @@ pub enum MarketError {
     InvalidPriceTimestamp,
     #[msg("Only the admin can perform this action")]
     Unauthorized,
+
+    // --- AMM-specific ---
+    #[msg("Swap fee in basis points is above the allowed maximum")]
+    InvalidFee,
+    #[msg("Initial liquidity is below the required minimum")]
+    InitialLiquidityTooLow,
+    #[msg("Computed output is below the requested minimum (slippage too high)")]
+    SlippageExceeded,
+    #[msg("Pool has insufficient shares to fulfil the swap")]
+    PoolDepleted,
+    #[msg("User does not hold enough shares for this operation")]
+    InsufficientShares,
+    #[msg("Liquidity has already been withdrawn")]
+    LiquidityAlreadyWithdrawn,
+    #[msg("Trading is not allowed after market resolve")]
+    TradingAfterResolve,
 }

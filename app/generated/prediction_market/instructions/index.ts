@@ -6,7 +6,9 @@
  * @see https://github.com/codama-idl/codama
  */
 
-export * from "./claimWinnings";
+export * from "./buy";
 export * from "./createMarket";
-export * from "./placeBet";
+export * from "./redeem";
 export * from "./resolveMarket";
+export * from "./sell";
+export * from "./withdrawLiquidity";
