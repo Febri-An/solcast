@@ -41,7 +41,7 @@ export function ProfileMenu(): ReactNode {
   if (status === "connecting") {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-border-low bg-bg2 px-3.5 py-2 text-sm text-muted">
-        Menghubungkan…
+        Connecting...
       </div>
     );
   }
