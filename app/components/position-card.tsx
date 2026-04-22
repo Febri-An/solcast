@@ -5,7 +5,7 @@ import { type ReactNode, useCallback, useState } from "react";
 import { type Address } from "@solana/kit";
 import { useSendTransaction, useWalletConnection } from "@solana/react-hooks";
 
-import { getClaimWinningsInstructionAsync } from "../generated/prediction_market";
+import { getRedeemInstructionAsync } from "../generated/prediction_market";
 import { useToast } from "./toast";
 import { type Market } from "../generated/prediction_market/accounts/market";
 import { type UserPosition } from "../generated/prediction_market/accounts/userPosition";
@@ -21,17 +21,24 @@ interface PositionCardProps {
   animationDelay?: number;
 }
 
-type PositionStatus = "active" | "won" | "lost" | "claimed";
+type PositionStatus = "active" | "won" | "lost" | "closed";
 
+/**
+ * AMM semantics: `yes_shares`/`no_shares` are set to 0 on redeem. So a
+ * resolved market + zero shares means either "already redeemed" or "never
+ * held the winning side". Either way we can't offer any action → "closed".
+ */
 function getPositionStatus(position: UserPosition, market: Market | null): PositionStatus {
   if (!market || !market.resolved) return "active";
-  if (position.claimed) return "claimed";
 
   const outcome = market.outcome;
   if (outcome === null || outcome === undefined) return "active";
 
-  const userWinningBet = outcome ? position.yesAmount : position.noAmount;
-  return userWinningBet > 0n ? "won" : "lost";
+  const winningShares = outcome ? position.yesShares : position.noShares;
+  if (winningShares > 0n) return "won";
+
+  if (position.yesShares === 0n && position.noShares === 0n) return "closed";
+  return "lost";
 }
 
 function formatSol(lamports: bigint): string {
@@ -42,25 +49,17 @@ function formatSol(lamports: bigint): string {
   return sol.toFixed(2);
 }
 
-function calculateWinnings(
+function getRedeemPayout(
   position: UserPosition,
-  market: Market
-): { payout: bigint; profit: bigint } | null {
+  market: Market,
+): { payout: bigint } | null {
   if (!market.resolved) return null;
-
   const outcome = market.outcome;
   if (outcome === null || outcome === undefined) return null;
-
-  const userWinningBet = outcome ? position.yesAmount : position.noAmount;
-  if (userWinningBet === 0n) return null;
-
-  const winningPool = outcome ? market.yesPool : market.noPool;
-  const losingPool = outcome ? market.noPool : market.yesPool;
-
-  const profit = winningPool > 0n ? (userWinningBet * losingPool) / winningPool : 0n;
-  const payout = userWinningBet + profit;
-
-  return { payout, profit };
+  const winningShares = outcome ? position.yesShares : position.noShares;
+  if (winningShares === 0n) return null;
+  // 1 winning share = 1 lamport at redeem
+  return { payout: winningShares };
 }
 
 function getTimeInfo(market: Market | null): string | null {
@@ -90,15 +89,15 @@ export function PositionCard({
   const [txStatus, setTxStatus] = useState<string | null>(null);
 
   const status = getPositionStatus(position, market);
-  const winnings = market ? calculateWinnings(position, market) : null;
+  const redeemable = market ? getRedeemPayout(position, market) : null;
 
-  const handleClaim = useCallback(async () => {
+  const handleRedeem = useCallback(async () => {
     if (!wallet) return;
 
     try {
-      setTxStatus("Claiming...");
+      setTxStatus("Redeeming...");
 
-      const instruction = await getClaimWinningsInstructionAsync({
+      const instruction = await getRedeemInstructionAsync({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wallet adapter vs Codama signer types
         user: wallet.account as any,
         market: marketAddress,
@@ -106,10 +105,10 @@ export function PositionCard({
 
       await send({ instructions: [instruction] });
       setTxStatus(null);
-      showToast("Winnings claimed successfully.");
+      showToast("Winnings redeemed successfully.");
       onUpdate?.();
     } catch (err) {
-      console.error("Claim failed:", err);
+      console.error("Redeem failed:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
       setTxStatus(`Error: ${message}`);
     }
@@ -119,7 +118,7 @@ export function PositionCard({
     active: { label: "Active", className: "bg-primary/10 text-primary" },
     won: { label: "Won", className: "bg-green-muted text-green-text" },
     lost: { label: "Lost", className: "bg-red-muted text-red-text" },
-    claimed: { label: "Claimed", className: "bg-bg3 text-muted" },
+    closed: { label: "Closed", className: "bg-bg3 text-muted" },
   };
 
   const { label, className: badgeClass } = statusConfig[status];
@@ -146,23 +145,23 @@ export function PositionCard({
         </div>
 
         <div className="flex flex-wrap gap-3 mb-3">
-          {position.yesAmount > 0n && (
+          {position.yesShares > 0n && (
             <div className="flex items-center gap-1.5">
               <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-green-muted text-green-text text-xs font-bold">
                 Y
               </span>
               <span className="font-mono text-sm text-foreground-secondary">
-                {formatSol(position.yesAmount)} SOL
+                {formatSol(position.yesShares)} shares
               </span>
             </div>
           )}
-          {position.noAmount > 0n && (
+          {position.noShares > 0n && (
             <div className="flex items-center gap-1.5">
               <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-red-muted text-red-text text-xs font-bold">
                 N
               </span>
               <span className="font-mono text-sm text-foreground-secondary">
-                {formatSol(position.noAmount)} SOL
+                {formatSol(position.noShares)} shares
               </span>
             </div>
           )}
@@ -177,25 +176,14 @@ export function PositionCard({
                   {market.outcome ? "YES" : "NO"}
                 </span>
               </span>
-              {winnings && (
+              {redeemable && (
                 <>
                   <span className="text-border-strong">|</span>
                   <span>
-                    {status === "won" || status === "claimed" ? (
-                      <>
-                        Payout:{" "}
-                        <span className="font-mono font-medium text-green-text">
-                          {formatSol(winnings.payout)} SOL
-                        </span>
-                        <span className="text-green-text/70 ml-1">
-                          (+{formatSol(winnings.profit)})
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-red-text">
-                        Lost {formatSol(position.yesAmount + position.noAmount)} SOL
-                      </span>
-                    )}
+                    Redeemable:{" "}
+                    <span className="font-mono font-medium text-green-text">
+                      {formatSol(redeemable.payout)} SOL
+                    </span>
                   </span>
                 </>
               )}
@@ -204,14 +192,14 @@ export function PositionCard({
         )}
       </div>
 
-      {status === "won" && !position.claimed && (
+      {status === "won" && redeemable && (
         <div className="border-t border-border-low p-3 bg-green-muted">
           <button
-            onClick={handleClaim}
+            onClick={handleRedeem}
             disabled={isSending}
             className="w-full rounded-xl bg-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green/80 disabled:opacity-50"
           >
-            {isSending ? "Claiming..." : `Claim ${formatSol(winnings?.payout ?? 0n)} SOL`}
+            {isSending ? "Redeeming..." : `Redeem ${formatSol(redeemable.payout)} SOL`}
           </button>
         </div>
       )}

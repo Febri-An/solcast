@@ -54,7 +54,8 @@ function checkEligibility(
     };
   }
 
-  const totalPool = m.yesPool + m.noPool;
+  // AMM pool size (virtual share count) — keep the same threshold meaning.
+  const totalPool = m.yesShares + m.noShares;
   if (totalPool < minLiquidityLamports) {
     return {
       eligible: false,
@@ -78,7 +79,7 @@ function logMarket(record: MarketRecord, nowSec: number): string {
       ? "YES"
       : "NO"
     : "—";
-  return `${shortAddr(addr)} | "${m.question}" | target=$${m.targetPrice} | pool=${m.yesPool + m.noPool} | t${secLeft >= 0 ? "-" : "+"}${Math.abs(secLeft)}s | resolved=${m.resolved} outcome=${outcomeStr}`;
+  return `${shortAddr(addr)} | "${m.question}" | target=$${m.targetPrice} | pool=${m.yesShares + m.noShares} | t${secLeft >= 0 ? "-" : "+"}${Math.abs(secLeft)}s | resolved=${m.resolved} outcome=${outcomeStr}`;
 }
 
 async function runCycle(

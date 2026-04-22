@@ -65,6 +65,8 @@ export function CreateMarketForm({
   const [selectedFeed, setSelectedFeed] = useState(PRICE_FEEDS[0].feedId);
   const [targetPrice, setTargetPrice] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("5");
+  const [initialLiquidity, setInitialLiquidity] = useState("0.5");
+  const [feePercent, setFeePercent] = useState("2");
   const [txStatus, setTxStatus] = useState<string | null>(null);
 
   const walletAddress = wallet?.account.address;
@@ -77,12 +79,20 @@ export function CreateMarketForm({
   const priceNum = parseFloat(targetPrice);
   const isValidPrice = !isNaN(priceNum) && priceNum > 0;
 
+  const liqNum = parseFloat(initialLiquidity);
+  const isValidLiquidity = !isNaN(liqNum) && liqNum >= 0.1;
+
+  const feeNum = parseFloat(feePercent);
+  const isValidFee = !isNaN(feeNum) && feeNum >= 0 && feeNum <= 10;
+
+  const isFormValid = isValidPrice && isValidLiquidity && isValidFee;
+
   const question = isValidPrice
     ? `Will ${feed.symbol} be above $${formatUsd(priceNum)}?`
     : "";
 
   const handleCreate = useCallback(async () => {
-    if (!wallet || !walletAddress || !isValidPrice) return;
+    if (!wallet || !walletAddress || !isFormValid) return;
     if (configured && !isProfileComplete) {
       setTxStatus("Set a username in your profile before creating a market.");
       return;
@@ -97,6 +107,8 @@ export function CreateMarketForm({
       const resolutionTime = BigInt(nowInSeconds + durationInSeconds);
 
       const feedIdBytes = hexToBytes(feed.feedId);
+      const initialLiquidityLamports = BigInt(Math.floor(liqNum * 1_000_000_000));
+      const feeBps = Math.round(feeNum * 100);
 
       const instruction = await getCreateMarketInstructionAsync({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wallet adapter vs Codama signer types
@@ -106,6 +118,8 @@ export function CreateMarketForm({
         resolutionTime,
         feedId: feedIdBytes,
         targetPrice: BigInt(Math.floor(priceNum)),
+        initialLiquidity: initialLiquidityLamports,
+        feeBps,
       });
 
       await send({ instructions: [instruction] });
@@ -113,6 +127,8 @@ export function CreateMarketForm({
       setSelectedFeed(PRICE_FEEDS[0].feedId);
       setTargetPrice("");
       setDurationMinutes("5");
+      setInitialLiquidity("0.5");
+      setFeePercent("2");
       setTxStatus(null);
       onCreated?.();
     } catch (err) {
@@ -123,11 +139,13 @@ export function CreateMarketForm({
   }, [
     wallet,
     walletAddress,
-    isValidPrice,
+    isFormValid,
     durationMinutes,
     feed,
     question,
     priceNum,
+    liqNum,
+    feeNum,
     send,
     onCreated,
     configured,
@@ -210,8 +228,8 @@ export function CreateMarketForm({
           </div>
         )}
 
-        <div className="flex items-end gap-3">
-          <div className="flex-1">
+        <div className="grid grid-cols-3 gap-3">
+          <div>
             <label className="block text-xs font-medium text-foreground-secondary mb-1.5">
               Duration
             </label>
@@ -228,9 +246,49 @@ export function CreateMarketForm({
               <option value="10080">1 week</option>
             </select>
           </div>
+          <div>
+            <label className="block text-xs font-medium text-foreground-secondary mb-1.5">
+              Seed Liquidity (SOL)
+            </label>
+            <input
+              type="number"
+              min="0.1"
+              step="0.1"
+              placeholder="0.5"
+              value={initialLiquidity}
+              onChange={(e) => setInitialLiquidity(e.target.value)}
+              disabled={isSending}
+              className="w-full rounded-lg border border-border-low bg-bg3 px-3 py-2.5 text-sm font-mono text-foreground outline-none placeholder:text-muted/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-foreground-secondary mb-1.5">
+              Swap Fee (%)
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+              placeholder="2"
+              value={feePercent}
+              onChange={(e) => setFeePercent(e.target.value)}
+              disabled={isSending}
+              className="w-full rounded-lg border border-border-low bg-bg3 px-3 py-2.5 text-sm font-mono text-foreground outline-none placeholder:text-muted/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
+            />
+          </div>
+        </div>
+
+        <div className="rounded-lg bg-amber/5 border border-amber/15 px-3 py-2.5 text-[11px] text-muted leading-relaxed">
+          You are seeding the AMM with your own SOL. If the outcome lands far from the starting
+          50/50, the losing side of the pool is forfeited — treat seed liquidity as at risk. Swap
+          fees (2% default) compensate for that risk.
+        </div>
+
+        <div className="flex justify-end">
           <button
             onClick={handleCreate}
-            disabled={isSending || !isValidPrice || (configured && !isProfileComplete)}
+            disabled={isSending || !isFormValid || (configured && !isProfileComplete)}
             className="rounded-lg bg-primary px-8 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:opacity-40"
           >
             {isSending ? "Creating..." : "Create Market"}

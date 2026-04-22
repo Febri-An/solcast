@@ -24,10 +24,15 @@ interface PositionWithMarket {
 }
 
 export interface ActivityStatsData {
+  /** Sum of shares currently held across active positions (approx TVL). */
   totalInvested: bigint;
+  /** Sum of redeemable winnings pending on resolved markets. */
   totalWon: bigint;
+  /** Paid-out positions (zeroed shares on resolved markets). */
   totalClaimed: bigint;
+  /** Sum of losing-side shares on resolved markets. */
   totalLost: bigint;
+  /** Placeholder — we don't track cost basis yet. */
   roiPercent: number;
   activePositions: number;
   claimablePositions: number;
@@ -131,10 +136,11 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
     let claimableCount = 0;
 
     for (const { position, market } of positions) {
-      const invested = position.yesAmount + position.noAmount;
-      totalInvested += invested;
+      const heldShares = position.yesShares + position.noShares;
 
       if (!market || !market.resolved) {
+        // Active position — sum held shares as a proxy for "invested size".
+        totalInvested += heldShares;
         activeCount++;
         continue;
       }
@@ -142,30 +148,22 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
       const outcome = market.outcome;
       if (outcome === null || outcome === undefined) continue;
 
-      const userWinningBet = outcome ? position.yesAmount : position.noAmount;
-      const userLosingBet = outcome ? position.noAmount : position.yesAmount;
+      const winningShares = outcome ? position.yesShares : position.noShares;
+      const losingShares = outcome ? position.noShares : position.yesShares;
 
-      if (userWinningBet > 0n) {
-        const winningPool = outcome ? market.yesPool : market.noPool;
-        const losingPool = outcome ? market.noPool : market.yesPool;
-        const winnings = winningPool > 0n ? (userWinningBet * losingPool) / winningPool : 0n;
-        const payout = userWinningBet + winnings;
-
-        totalWon += winnings;
-        totalLost += userLosingBet;
-
-        if (position.claimed) {
-          totalClaimed += payout;
-        } else {
-          claimableCount++;
-        }
-      } else {
-        totalLost += invested;
+      totalLost += losingShares;
+      if (winningShares > 0n) {
+        totalWon += winningShares;
+        claimableCount++;
+      } else if (heldShares === 0n) {
+        // Likely already redeemed — we don't know the actual amount anymore.
+        totalClaimed += 0n;
       }
     }
 
-    const netPnL = totalWon - totalLost;
-    const roiPercent = totalInvested > 0n ? Number((netPnL * 10000n) / totalInvested) / 100 : 0;
+    // Without cost-basis tracking we can't compute a meaningful ROI on-chain;
+    // leave it at zero until we persist trade history.
+    const roiPercent = 0;
 
     return {
       totalInvested,
@@ -184,11 +182,12 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
       if (activeTab === "active") return !market?.resolved;
       if (activeTab === "resolved") return market?.resolved;
 
-      if (!market?.resolved || position.claimed) return false;
+      // "claimable" = resolved market + user still holds winning shares
+      if (!market?.resolved) return false;
       const outcome = market.outcome;
       if (outcome === null || outcome === undefined) return false;
-      const userWinningBet = outcome ? position.yesAmount : position.noAmount;
-      return userWinningBet > 0n;
+      const winningShares = outcome ? position.yesShares : position.noShares;
+      return winningShares > 0n;
     });
   }, [positions, activeTab]);
 
@@ -204,10 +203,8 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
         resolved++;
         const outcome = market.outcome;
         if (outcome !== null && outcome !== undefined) {
-          const userWinningBet = outcome ? position.yesAmount : position.noAmount;
-          if (userWinningBet > 0n && !position.claimed) {
-            claimable++;
-          }
+          const winningShares = outcome ? position.yesShares : position.noShares;
+          if (winningShares > 0n) claimable++;
         }
       }
     }

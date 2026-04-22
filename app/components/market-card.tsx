@@ -188,8 +188,8 @@ export function MarketCard({
   const { showToast } = useToast();
   const [bookmarked, setBookmarked] = useState(false);
 
-  const handleClaimSuccess = useCallback(() => {
-    showToast("Winnings claimed successfully.");
+  const handleRedeemSuccess = useCallback(() => {
+    showToast("Winnings redeemed successfully.");
   }, [showToast]);
 
   const {
@@ -198,26 +198,27 @@ export function MarketCard({
     isResolving,
     isResolved,
     resolutionTime,
-    canBet,
+    canTrade: canTradeMarket,
     canResolve,
-    totalPool,
+    totalShares,
     yesPercent,
     noPercent,
     handleResolve,
-    handleClaim,
-    canClaim,
-    claimPayout,
+    handleRedeem,
+    canRedeem,
+    redeemPayout,
     isProfileComplete,
   } = useMarketTrading(market, marketAddress, onUpdate, {
-    onClaimSuccess: handleClaimSuccess,
+    onRedeemSuccess: handleRedeemSuccess,
   });
 
-  const canTrade = canBet && status === "connected" && (!profileConfigured || isProfileComplete);
+  const canTrade =
+    canTradeMarket && status === "connected" && (!profileConfigured || isProfileComplete);
   const marketHref = `/market/${marketAddress}${TRADE_HASH}`;
 
   const brandName = getAssetBrandName(market.feedId);
 
-  const showUpDownCard = !isResolved && canBet;
+  const showUpDownCard = !isResolved && canTradeMarket;
   const isGrid = density === "grid";
   const shortLiveWindow = isShortLiveWindowMarket(market);
 
@@ -299,7 +300,7 @@ export function MarketCard({
             ) : (
               <>
                 <span className="shrink-0 font-mono font-medium text-foreground-secondary">
-                  {formatVolume(totalPool)} vol
+                  {formatVolume(totalShares)} vol
                 </span>
                 <span className="text-border-strong">·</span>
                 <span className="truncate text-muted">{brandName}</span>
@@ -307,7 +308,7 @@ export function MarketCard({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
-            {canBet && status === "connected" && profileConfigured && !isProfileComplete && (
+            {canTradeMarket && status === "connected" && profileConfigured && !isProfileComplete && (
               <button
                 type="button"
                 onClick={(e) => {
@@ -360,7 +361,7 @@ export function MarketCard({
 
   /* ——— Compact row: pending resolve or resolved ——— */
   const rowInGrid = isGrid;
-  const isPendingResolveGrid = rowInGrid && !isResolved && !canBet;
+  const isPendingResolveGrid = rowInGrid && !isResolved && !canTradeMarket;
   return (
     <div
       className={
@@ -405,7 +406,7 @@ export function MarketCard({
           </div>
           <div className="flex items-center gap-3 text-xs text-muted">
             <span className="flex items-center gap-1">
-              {formatVolume(totalPool)} SOL vol.
+              {formatVolume(totalShares)} SOL vol.
             </span>
           </div>
         </div>
@@ -440,7 +441,7 @@ export function MarketCard({
             </>
           )}
 
-          {canBet && status === "connected" && profileConfigured && !isProfileComplete && (
+          {canTradeMarket && status === "connected" && profileConfigured && !isProfileComplete && (
             <button
               type="button"
               onClick={(e) => {
@@ -454,7 +455,7 @@ export function MarketCard({
             </button>
           )}
 
-          {canBet && status !== "connected" && (
+          {canTradeMarket && status !== "connected" && (
             <>
               <Link
                 href={marketHref}
@@ -494,22 +495,22 @@ export function MarketCard({
             </span>
           )}
 
-          {isResolved && canClaim && (
+          {isResolved && canRedeem && (
             <button
               type="button"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                void handleClaim();
+                void handleRedeem();
               }}
               disabled={isSending}
               className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20 disabled:opacity-40"
             >
-              {isSending ? "Claiming..." : `Claim ${formatSol(claimPayout)}`}
+              {isSending ? "Claiming..." : `Claim ${formatSol(redeemPayout)}`}
             </button>
           )}
 
-          {isResolved && !canClaim && !canResolve && (
+          {isResolved && !canRedeem && !canResolve && (
             <span
               className={`rounded-lg px-4 py-1.5 text-sm font-semibold ${
                 unwrapOutcome(market.outcome)

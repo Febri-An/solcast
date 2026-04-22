@@ -51,42 +51,49 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
   const { showToast } = useToast();
   const [tab, setTab] = useState<DetailTab>("chart");
 
-  const handleBetSuccess = useCallback(() => {
-    showToast("Bet placed successfully.");
+  const handleTradeSuccess = useCallback(() => {
+    showToast("Trade executed successfully.");
   }, [showToast]);
 
-  const handleClaimSuccess = useCallback(() => {
-    showToast("Winnings claimed successfully.");
+  const handleRedeemSuccess = useCallback(() => {
+    showToast("Winnings redeemed successfully.");
   }, [showToast]);
 
   const {
     isSending,
-    betAmount,
-    setBetAmount,
+    tradeAmount,
+    setTradeAmount,
     txStatus,
     isResolving,
     isResolved,
     resolutionTime,
-    canBet,
+    canTrade: canTradeMarket,
     canResolve,
-    totalPool,
+    totalShares,
     yesPercent,
     noPercent,
-    handlePlaceBet,
+    userPosition,
+    quoteForBuy,
+    handleBuy,
+    handleSell,
     handleResolve,
-    handleClaim,
-    canClaim,
-    claimPayout,
+    handleRedeem,
+    canRedeem,
+    redeemPayout,
     isProfileComplete,
   } = useMarketTrading(market, marketAddress, onRefresh, {
-    onPlaceBetSuccess: handleBetSuccess,
-    onClaimSuccess: handleClaimSuccess,
+    onTradeSuccess: handleTradeSuccess,
+    onRedeemSuccess: handleRedeemSuccess,
   });
 
-  const canTrade = canBet && status === "connected" && (!profileConfigured || isProfileComplete);
+  const canTrade =
+    canTradeMarket && status === "connected" && (!profileConfigured || isProfileComplete);
+
+  const yesQuote = quoteForBuy(true);
+  const noQuote = quoteForBuy(false);
 
   const shortLiveWindow = isShortLiveWindowMarket(market);
-  const shortLiveCountdownActive = Boolean(canBet && !isResolved && shortLiveWindow);
+  const shortLiveCountdownActive = Boolean(canTradeMarket && !isResolved && shortLiveWindow);
   const shortLiveEndsLabel = useShortLiveCountdown(resolutionTime, shortLiveCountdownActive);
 
   const tvSymbol = getTradingViewSymbolForFeed(market.feedId);
@@ -124,7 +131,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                   d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 10v1"
                 />
               </svg>
-              {formatVolume(totalPool)} vol.
+              {formatVolume(totalShares)} vol.
             </span>
             {!isResolved && (
               <span className="flex items-center gap-1">
@@ -136,7 +143,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                     d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                {canBet
+                {canTradeMarket
                   ? shortLiveWindow
                     ? `Ends in ${shortLiveEndsLabel}`
                     : `Ends in ${getTimeRemaining(resolutionTime)}`
@@ -302,38 +309,98 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                       min="0"
                       step="0.01"
                       placeholder="0.00"
-                      value={betAmount}
-                      onChange={(e) => setBetAmount(e.target.value)}
+                      value={tradeAmount}
+                      onChange={(e) => setTradeAmount(e.target.value)}
                       disabled={isSending}
                       className="w-full rounded-xl border border-border-low bg-bg3 px-3 py-2.5 text-sm font-mono text-foreground outline-none placeholder:text-muted/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
                     />
                   </div>
+                  {(yesQuote || noQuote) && (
+                    <div className="rounded-lg bg-bg3/60 border border-border-low px-3 py-2.5 text-[11px] space-y-1 font-mono text-foreground-secondary">
+                      {yesQuote && (
+                        <div className="flex justify-between">
+                          <span className="text-green-text">Buy YES →</span>
+                          <span>
+                            {formatSol(yesQuote.out)} shares @ {(yesQuote.effectivePriceBps / 100).toFixed(1)}¢
+                          </span>
+                        </div>
+                      )}
+                      {noQuote && (
+                        <div className="flex justify-between">
+                          <span className="text-red-text">Buy NO →</span>
+                          <span>
+                            {formatSol(noQuote.out)} shares @ {(noQuote.effectivePriceBps / 100).toFixed(1)}¢
+                          </span>
+                        </div>
+                      )}
+                      <p className="text-muted text-[10px] pt-1 font-sans">
+                        Fee {(market.feeBps / 100).toFixed(1)}% · slippage tolerance 1%
+                      </p>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => handlePlaceBet(true)}
-                      disabled={isSending || !betAmount || parseFloat(betAmount) <= 0}
+                      onClick={() => handleBuy(true)}
+                      disabled={isSending || !tradeAmount || parseFloat(tradeAmount) <= 0}
                       className="rounded-xl bg-green-muted py-3 text-sm font-bold text-green-text transition-colors hover:bg-green/20 disabled:opacity-40"
                     >
                       Yes {yesPercent}¢
                     </button>
                     <button
                       type="button"
-                      onClick={() => handlePlaceBet(false)}
-                      disabled={isSending || !betAmount || parseFloat(betAmount) <= 0}
+                      onClick={() => handleBuy(false)}
+                      disabled={isSending || !tradeAmount || parseFloat(tradeAmount) <= 0}
                       className="rounded-xl bg-red-muted py-3 text-sm font-bold text-red-text transition-colors hover:bg-red/20 disabled:opacity-40"
                     >
                       No {noPercent}¢
                     </button>
                   </div>
                   <p className="text-[11px] text-muted leading-relaxed">
-                    Enter an amount, then tap Yes or No. Prices reflect pool-implied probability, not
-                    a separate order book.
+                    CPMM pool — every share pays 1 SOL if its side wins. Prices shift as the pool trades.
                   </p>
+
+                  {userPosition && (userPosition.yesShares > 0n || userPosition.noShares > 0n) && (
+                    <div className="mt-4 rounded-xl border border-border-low bg-bg3/40 p-3 space-y-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                        Your position
+                      </p>
+                      {userPosition.yesShares > 0n && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-green-text font-mono">
+                            YES {formatSol(userPosition.yesShares)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void handleSell(true, userPosition.yesShares)}
+                            disabled={isSending}
+                            className="rounded-md border border-border-low bg-bg2 px-2 py-1 text-[11px] font-semibold text-foreground-secondary transition hover:border-foreground-muted hover:text-foreground disabled:opacity-40"
+                          >
+                            Sell all
+                          </button>
+                        </div>
+                      )}
+                      {userPosition.noShares > 0n && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-red-text font-mono">
+                            NO {formatSol(userPosition.noShares)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void handleSell(false, userPosition.noShares)}
+                            disabled={isSending}
+                            className="rounded-md border border-border-low bg-bg2 px-2 py-1 text-[11px] font-semibold text-foreground-secondary transition hover:border-foreground-muted hover:text-foreground disabled:opacity-40"
+                          >
+                            Sell all
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
-              {canBet && status === "connected" && profileConfigured && !isProfileComplete && (
+              {canTradeMarket && status === "connected" && profileConfigured && !isProfileComplete && (
                 <div className="rounded-xl border border-amber/25 bg-amber-muted/40 px-4 py-4 text-center">
                   <p className="text-sm text-foreground-secondary mb-3">
                     Set a username in your profile before trading.
@@ -348,7 +415,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                 </div>
               )}
 
-              {canBet && status !== "connected" && (
+              {canTradeMarket && status !== "connected" && (
                 <p className="text-sm text-muted text-center py-4">
                   Connect your wallet to trade this market.
                 </p>
@@ -371,18 +438,18 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                 </p>
               )}
 
-              {isResolved && canClaim && (
+              {isResolved && canRedeem && (
                 <button
                   type="button"
-                  onClick={() => void handleClaim()}
+                  onClick={() => void handleRedeem()}
                   disabled={isSending}
                   className="w-full rounded-xl bg-green py-3 text-sm font-bold text-white transition-colors hover:bg-green/80 disabled:opacity-40"
                 >
-                  {isSending ? "Claiming…" : `Claim ${formatSol(claimPayout)} SOL`}
+                  {isSending ? "Redeeming…" : `Redeem ${formatSol(redeemPayout)} SOL`}
                 </button>
               )}
 
-              {isResolved && !canClaim && (
+              {isResolved && !canRedeem && (
                 <div
                   className={`rounded-xl py-4 text-center text-sm font-semibold ${
                     outcome ? "bg-green-muted text-green-text" : "bg-red-muted text-red-text"
