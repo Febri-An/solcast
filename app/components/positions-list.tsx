@@ -1,20 +1,16 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import Link from "next/link";
 
 import { type Address } from "@solana/kit";
 
-import { getMarketDecoder, type Market } from "../generated/prediction_market";
-import {
-  getUserPositionDecoder,
-  type UserPosition,
-} from "../generated/prediction_market/accounts/userPosition";
+import { type Market } from "../generated/prediction_market";
+import { type UserPosition } from "../generated/prediction_market/accounts/userPosition";
+import { usePositionsRealtime } from "../hooks/use-positions-realtime";
 import { ActivityStats } from "./activity-stats";
 import { PositionCard } from "./position-card";
-
-const POLL_INTERVAL_MS = 3000;
 
 interface PositionWithMarket {
   positionAddress: Address;
@@ -45,87 +41,30 @@ interface PositionsListProps {
 }
 
 export function PositionsList({ walletAddress }: PositionsListProps): ReactNode {
-  const [positions, setPositions] = useState<PositionWithMarket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
 
-  const fetchPositions = useCallback(async () => {
-    if (!walletAddress) return;
+  const {
+    positions: rawPositions,
+    markets: marketMap,
+    loading,
+    error,
+    refresh: fetchPositions,
+  } = usePositionsRealtime(walletAddress);
 
-    try {
-      const response = await fetch(
-        `/api/positions?wallet=${encodeURIComponent(walletAddress)}`,
-        { cache: "no-store" },
-      );
-      if (!response.ok) {
-        const errBody = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(errBody.error ?? `HTTP ${response.status}`);
-      }
-
-      const payload = (await response.json()) as {
-        positions: Array<{
-          address: string;
-          marketAddress: string;
-          accountDataBase64: string;
-        }>;
-        markets: Array<{ address: string; accountDataBase64: string }>;
-      };
-
-      const positionDecoder = getUserPositionDecoder();
-      const marketDecoder = getMarketDecoder();
-
-      const marketMap = new Map<string, Market>();
-      for (const m of payload.markets ?? []) {
-        try {
-          const bytes = Uint8Array.from(atob(m.accountDataBase64), (c) => c.charCodeAt(0));
-          marketMap.set(m.address, marketDecoder.decode(bytes));
-        } catch {
-          console.warn("Failed to decode market:", m.address);
-        }
-      }
-
-      const decodedPositions: Array<{ address: Address; position: UserPosition }> = [];
-      for (const p of payload.positions ?? []) {
-        try {
-          const bytes = Uint8Array.from(atob(p.accountDataBase64), (c) => c.charCodeAt(0));
-          decodedPositions.push({
-            address: p.address as Address,
-            position: positionDecoder.decode(bytes),
-          });
-        } catch (decodeError) {
-          console.warn("Failed to decode position:", p.address, decodeError);
-        }
-      }
-
-      const enrichedPositions: PositionWithMarket[] = decodedPositions.map((p) => ({
-        positionAddress: p.address,
-        position: p.position,
-        marketAddress: p.position.market,
-        market: marketMap.get(p.position.market) || null,
-      }));
-
-      enrichedPositions.sort((a, b) => {
-        const aTime = a.market?.resolutionTime ?? 0n;
-        const bTime = b.market?.resolutionTime ?? 0n;
-        return Number(bTime - aTime);
-      });
-
-      setPositions(enrichedPositions);
-      setError(null);
-    } catch (err) {
-      console.error("Failed to fetch positions:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch positions");
-    } finally {
-      setLoading(false);
-    }
-  }, [walletAddress]);
-
-  useEffect(() => {
-    fetchPositions();
-    const interval = setInterval(fetchPositions, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchPositions]);
+  const positions = useMemo<PositionWithMarket[]>(() => {
+    const enriched = rawPositions.map((p) => ({
+      positionAddress: p.positionAddress,
+      position: p.position,
+      marketAddress: p.marketAddress,
+      market: marketMap.get(p.marketAddress) ?? null,
+    }));
+    enriched.sort((a, b) => {
+      const aTime = a.market?.resolutionTime ?? 0n;
+      const bTime = b.market?.resolutionTime ?? 0n;
+      return Number(bTime - aTime);
+    });
+    return enriched;
+  }, [rawPositions, marketMap]);
 
   const stats = useMemo((): ActivityStatsData => {
     let totalInvested = 0n;

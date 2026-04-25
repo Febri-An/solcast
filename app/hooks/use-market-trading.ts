@@ -11,10 +11,6 @@ import {
   getSellInstructionAsync,
   type Market,
 } from "../generated/prediction_market";
-import {
-  getUserPositionDecoder,
-  type UserPosition,
-} from "../generated/prediction_market/accounts/userPosition";
 import { resolveMarketWithPyth } from "../lib/pyth";
 import { createAnchorWallet, getWeb3Connection } from "../lib/solana-compat";
 import {
@@ -24,11 +20,11 @@ import {
   quoteSell,
   yesPriceBps,
 } from "../lib/amm-math";
-
 import { LAMPORTS_PER_SOL } from "../lib/market-format";
+import { syncMarketAndPosition, syncMarketRow } from "../lib/write-through";
 import { useProfile } from "./use-profile";
+import { useUserPositionRealtime } from "./use-positions-realtime";
 
-const POLL_INTERVAL_MS = 3000;
 const STATUS_CLEAR_DELAY_MS = 3000;
 /** User-facing default slippage tolerance (1%). */
 const DEFAULT_SLIPPAGE_BPS = 100;
@@ -37,23 +33,76 @@ export function unwrapOutcome(option: Option<boolean>): boolean | null {
   return isSome(option) ? option.value : null;
 }
 
-async function fetchUserPosition(
-  marketAddress: Address,
-  walletAddress: Address,
-): Promise<UserPosition | null> {
-  const url = `/api/positions?wallet=${encodeURIComponent(walletAddress)}&market=${encodeURIComponent(marketAddress)}`;
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? `HTTP ${response.status}`);
+/**
+ * @solana/kit wraps on-chain failures in a `SolanaError` whose `.message` is a
+ * generic "transaction plan failed" string. The real root cause (program logs,
+ * custom error code, RPC response) lives on `err.cause` and `err.context`.
+ * This helper walks the chain and returns a message useful for the UI.
+ */
+function formatTxError(err: unknown): string {
+  const parts: string[] = [];
+  let cur: unknown = err;
+  let depth = 0;
+  while (cur && depth < 6) {
+    if (cur instanceof Error) {
+      parts.push(cur.message);
+      const context = (cur as unknown as { context?: unknown }).context;
+      if (context && typeof context === "object") {
+        const ctx = context as {
+          code?: number;
+          logs?: string[];
+          errorName?: string;
+          errorMessage?: string;
+          __code?: number;
+        };
+        if (ctx.errorName) parts.push(`(${ctx.errorName})`);
+        if (ctx.errorMessage) parts.push(ctx.errorMessage);
+        if (typeof ctx.code === "number") parts.push(`code=${ctx.code}`);
+        if (Array.isArray(ctx.logs) && ctx.logs.length > 0) {
+          const last = ctx.logs[ctx.logs.length - 1];
+          if (last) parts.push(`log: ${last}`);
+        }
+      }
+      cur = (cur as { cause?: unknown }).cause;
+    } else {
+      parts.push(String(cur));
+      break;
+    }
+    depth++;
   }
-  const payload = (await response.json()) as {
-    positions: Array<{ address: string; marketAddress: string; accountDataBase64: string }>;
-  };
-  const row = payload.positions?.[0];
-  if (!row) return null;
-  const bytes = Uint8Array.from(atob(row.accountDataBase64), (c) => c.charCodeAt(0));
-  return getUserPositionDecoder().decode(bytes);
+  // Deduplicate while preserving order.
+  const seen = new Set<string>();
+  const unique = parts.filter((p) => (seen.has(p) ? false : (seen.add(p), true)));
+  return unique.join(" · ").slice(0, 400);
+}
+
+/** Dump the full error chain to the console for devtools debugging. */
+function logTxError(label: string, err: unknown) {
+  console.group(label);
+  let cur: unknown = err;
+  let depth = 0;
+  while (cur && depth < 6) {
+    console.error(`[depth ${depth}]`, cur);
+    if (cur instanceof Error) {
+      const ctx = (cur as unknown as { context?: unknown }).context;
+      if (ctx) console.error(`[depth ${depth}] context:`, ctx);
+      cur = (cur as { cause?: unknown }).cause;
+    } else {
+      break;
+    }
+    depth++;
+  }
+  console.groupEnd();
+}
+
+/**
+ * Optimistic overlay applied after sign but before the write-through lands.
+ * When the DB push arrives (or a second later via the keeper's reconcile),
+ * the overlay is cleared and the sidebar shows authoritative numbers.
+ */
+interface OptimisticOverlay {
+  yesShares: bigint;
+  noShares: bigint;
 }
 
 export interface UseMarketTradingOptions {
@@ -77,30 +126,18 @@ export function useMarketTrading(
 
   const [tradeAmount, setTradeAmount] = useState("");
   const [txStatus, setTxStatus] = useState<string | null>(null);
-  const [userPosition, setUserPosition] = useState<UserPosition | null>(null);
   const [isResolving, setIsResolving] = useState(false);
+  const [optimisticOverlay, setOptimisticOverlay] =
+    useState<OptimisticOverlay | null>(null);
 
   const walletAddress = wallet?.account.address;
 
-  useEffect(() => {
-    async function fetchPosition(): Promise<void> {
-      if (!walletAddress) {
-        setUserPosition(null);
-        return;
-      }
-      try {
-        const position = await fetchUserPosition(marketAddress, walletAddress);
-        setUserPosition(position);
-      } catch (err) {
-        console.warn("Failed to fetch user position:", err);
-        setUserPosition(null);
-      }
-    }
-
-    fetchPosition();
-    const interval = setInterval(fetchPosition, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [walletAddress, marketAddress]);
+  // Subscribe to the user's position via Supabase realtime so buy/sell/redeem
+  // reflect the moment the write-through lands (no polling).
+  const { position: userPosition } = useUserPositionRealtime(
+    walletAddress ?? null,
+    marketAddress,
+  );
 
   const isResolved = market.resolved;
   const now = Date.now() / 1000;
@@ -108,11 +145,32 @@ export function useMarketTrading(
   const canTrade = !isResolved && now < resolutionTime;
   const canResolve = !isResolved && now >= resolutionTime;
 
-  const yesShares = market.yesShares;
-  const noShares = market.noShares;
+  // Effective pool values: on optimistic state override the market numbers so
+  // the sidebar price moves instantly after a click. The overlay is cleared
+  // whenever the real market prop changes (the realtime hook will re-render
+  // this component with fresh values once the write-through lands).
+  const yesShares = optimisticOverlay?.yesShares ?? market.yesShares;
+  const noShares = optimisticOverlay?.noShares ?? market.noShares;
   const feeBps = market.feeBps;
   /** Total virtual TVL of the market pool, roughly tracks SOL volume. */
   const totalShares = yesShares + noShares;
+
+  // Clear the optimistic overlay whenever the authoritative market state
+  // changes — i.e. the realtime push / refresh has landed, so we now have
+  // chain-truth numbers in `market`. As a safety belt we also auto-clear
+  // after 6 s in case the push never arrives (network hiccup, misconfig).
+  useEffect(() => {
+    if (!optimisticOverlay) return;
+    setOptimisticOverlay(null);
+    // Intentionally only responding to the market prop identity changing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [market]);
+
+  useEffect(() => {
+    if (!optimisticOverlay) return;
+    const timer = setTimeout(() => setOptimisticOverlay(null), 6000);
+    return () => clearTimeout(timer);
+  }, [optimisticOverlay]);
 
   /** Current implied probability of YES in basis points (0..10000). */
   const yesBps = useMemo(
@@ -151,6 +209,9 @@ export function useMarketTrading(
           return;
         }
 
+        // Quote against the best-known pool state: prefer the optimistic
+        // overlay if a prior trade just landed (chain-truth for ~500 ms
+        // before realtime catches up), else the authoritative market prop.
         const quote = quoteBuy(yesShares, noShares, amount, buyYes, feeBps);
         if (isTradeError(quote)) {
           setTxStatus(`Quote failed: ${quote}`);
@@ -170,14 +231,25 @@ export function useMarketTrading(
         setTxStatus("Awaiting signature...");
         await send({ instructions: [instruction] });
 
+        // Optimistic overlay: the AMM math mirrors on-chain, so our expected
+        // pool values should match the confirmed state within 1 lamport.
+        setOptimisticOverlay({
+          yesShares: quote.newYesShares,
+          noShares: quote.newNoShares,
+        });
+
+        // Write-through: refresh market + position rows in Supabase so the
+        // realtime subscription pushes authoritative numbers across clients.
+        void syncMarketAndPosition(marketAddress, walletAddress);
+
         setTradeAmount("");
         setTxStatus(null);
         onTradeSuccess?.();
         onUpdate?.();
       } catch (err) {
-        console.error("Buy failed:", err);
-        const message = err instanceof Error ? err.message : "Unknown error";
-        setTxStatus(`Error: ${message}`);
+        logTxError("Buy failed", err);
+        setTxStatus(`Error: ${formatTxError(err)}`);
+        setOptimisticOverlay(null);
       }
     },
     [
@@ -202,6 +274,7 @@ export function useMarketTrading(
 
       try {
         setTxStatus("Building transaction...");
+        // Quote against overlay-aware pool state (see handleBuy for rationale).
         const quote = quoteSell(yesShares, noShares, sharesIn, sellYes);
         if (isTradeError(quote)) {
           setTxStatus(`Quote failed: ${quote}`);
@@ -221,13 +294,22 @@ export function useMarketTrading(
         setTxStatus("Awaiting signature...");
         await send({ instructions: [instruction] });
 
+        // Optimistic overlay: mirror the quote's post-sell pool reserves so
+        // the sidebar price moves instantly.
+        setOptimisticOverlay({
+          yesShares: quote.newYesShares,
+          noShares: quote.newNoShares,
+        });
+
+        void syncMarketAndPosition(marketAddress, walletAddress);
+
         setTxStatus(null);
         onTradeSuccess?.();
         onUpdate?.();
       } catch (err) {
-        console.error("Sell failed:", err);
-        const message = err instanceof Error ? err.message : "Unknown error";
-        setTxStatus(`Error: ${message}`);
+        logTxError("Sell failed", err);
+        setTxStatus(`Error: ${formatTxError(err)}`);
+        setOptimisticOverlay(null);
       }
     },
     [
@@ -263,12 +345,14 @@ export function useMarketTrading(
 
       const lastSig = signatures[signatures.length - 1];
       setTxStatus(`Resolved! ${lastSig?.slice(0, 8)}...`);
+
+      void syncMarketRow(marketAddress);
+
       setTimeout(() => setTxStatus(null), STATUS_CLEAR_DELAY_MS);
       onUpdate?.();
     } catch (err) {
-      console.error("Resolve failed:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setTxStatus(`Error: ${message}`);
+      logTxError("Resolve failed", err);
+      setTxStatus(`Error: ${formatTxError(err)}`);
     } finally {
       setIsResolving(false);
     }
@@ -288,12 +372,16 @@ export function useMarketTrading(
 
       await send({ instructions: [instruction] });
       setTxStatus(null);
+
+      // Redeem zeroes the winning shares and may decrement supply counters
+      // on the market. Sync both so the UI reflects the settlement right away.
+      void syncMarketAndPosition(marketAddress, walletAddress);
+
       onRedeemSuccess?.();
       onUpdate?.();
     } catch (err) {
-      console.error("Redeem failed:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setTxStatus(`Error: ${message}`);
+      logTxError("Redeem failed", err);
+      setTxStatus(`Error: ${formatTxError(err)}`);
     }
   }, [wallet, walletAddress, marketAddress, send, onUpdate, onRedeemSuccess]);
 

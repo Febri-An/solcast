@@ -1,19 +1,10 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo } from "react";
 
-import { type Address } from "@solana/kit";
-
-import { getMarketDecoder, type Market } from "../generated/prediction_market";
+import { useMarketsRealtime, type MarketWithAddress } from "../hooks/use-markets-realtime";
 import { isOpenForBetting } from "../lib/market-format";
 import { MarketCard } from "./market-card";
-
-const POLL_INTERVAL_MS = 3000;
-
-interface MarketWithAddress {
-  address: Address;
-  market: Market;
-}
 
 export type MarketsFilterTab = "active" | "pending" | "past";
 
@@ -23,57 +14,17 @@ interface MarketsListProps {
 }
 
 export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps): ReactNode {
-  const [markets, setMarkets] = useState<MarketWithAddress[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { markets: rawMarkets, loading, error, refresh } = useMarketsRealtime();
 
-  const fetchMarkets = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const markets = useMemo<MarketWithAddress[]>(
+    () =>
+      [...rawMarkets].sort(
+        (a, b) => Number(b.market.resolutionTime - a.market.resolutionTime),
+      ),
+    [rawMarkets],
+  );
 
-    try {
-      const response = await fetch("/api/markets", { cache: "no-store" });
-      if (!response.ok) {
-        const errBody = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(errBody.error ?? `HTTP ${response.status}`);
-      }
-
-      const result = (await response.json()) as {
-        markets: Array<{ address: string; accountDataBase64: string }>;
-      };
-
-      const decoder = getMarketDecoder();
-      const fetchedMarkets: MarketWithAddress[] = [];
-
-      for (const row of result.markets ?? []) {
-        try {
-          const data = Uint8Array.from(atob(row.accountDataBase64), (c) => c.charCodeAt(0));
-          const market = decoder.decode(data);
-          fetchedMarkets.push({
-            address: row.address as Address,
-            market,
-          });
-        } catch (decodeError) {
-          console.warn("Failed to decode market account:", row.address, decodeError);
-        }
-      }
-
-      fetchedMarkets.sort((a, b) => Number(b.market.resolutionTime - a.market.resolutionTime));
-
-      setMarkets(fetchedMarkets);
-    } catch (err) {
-      console.error("Failed to fetch markets:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch markets");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchMarkets();
-    const interval = setInterval(fetchMarkets, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchMarkets]);
+  const fetchMarkets = refresh;
 
   const { bettingMarkets, pendingResolveMarkets, pastMarkets } = useMemo(() => {
     const betting: MarketWithAddress[] = [];

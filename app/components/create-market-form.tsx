@@ -6,6 +6,8 @@ import { useSendTransaction, useWalletConnection } from "@solana/react-hooks";
 
 import { getCreateMarketInstructionAsync } from "../generated/prediction_market";
 import { useProfile } from "../hooks/use-profile";
+import { deriveMarketAddress } from "../lib/program-pda";
+import { syncMarketRow } from "../lib/write-through";
 
 interface CreateMarketFormProps {
   onCreated?: () => void;
@@ -123,6 +125,15 @@ export function CreateMarketForm({
       });
 
       await send({ instructions: [instruction] });
+
+      // Write-through: push the freshly-created market into Supabase so the
+      // realtime subscribers see it within a few hundred ms (instead of
+      // waiting for the keeper's next full-sync cycle).
+      const marketAddress = await deriveMarketAddress(
+        wallet.account.address,
+        marketId,
+      );
+      void syncMarketRow(marketAddress);
 
       setSelectedFeed(PRICE_FEEDS[0].feedId);
       setTargetPrice("");

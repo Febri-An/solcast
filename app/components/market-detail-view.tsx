@@ -7,7 +7,8 @@ import Link from "next/link";
 import { type Address } from "@solana/kit";
 import { useWalletConnection } from "@solana/react-hooks";
 
-import { getMarketDecoder, type Market } from "../generated/prediction_market";
+import { type Market } from "../generated/prediction_market";
+import { useMarketRealtime } from "../hooks/use-markets-realtime";
 import { useMarketTrading, unwrapOutcome } from "../hooks/use-market-trading";
 import { useProfile } from "../hooks/use-profile";
 import {
@@ -473,42 +474,11 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
 }
 
 export function MarketDetailView({ marketAddress }: MarketDetailViewProps): ReactNode {
-  const [market, setMarket] = useState<Market | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { market, loading, error, refresh } = useMarketRealtime(marketAddress);
 
   const loadMarket = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(
-        `/api/markets/${encodeURIComponent(marketAddress)}`,
-        { cache: "no-store" },
-      );
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `HTTP ${response.status}`);
-      }
-      const payload = (await response.json()) as {
-        market: { address: string; accountDataBase64: string };
-      };
-      const b64 = payload.market?.accountDataBase64;
-      if (!b64) {
-        throw new Error("Market not found");
-      }
-      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-      setMarket(getMarketDecoder().decode(bytes));
-    } catch (e) {
-      setMarket(null);
-      setError(e instanceof Error ? e.message : "Failed to load market");
-    } finally {
-      setLoading(false);
-    }
-  }, [marketAddress]);
-
-  useEffect(() => {
-    void loadMarket();
-  }, [loadMarket]);
+    await refresh();
+  }, [refresh]);
 
   if (loading && !market) {
     return (
