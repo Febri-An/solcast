@@ -18,6 +18,10 @@ import { loadConfig, type KeeperConfig } from "./config";
 import { loadKeypair, keypairWallet } from "./wallet";
 import { fetchAllMarkets, type MarketRecord } from "./markets";
 import { resolveMarketWithPyth } from "../../app/lib/pyth";
+import {
+  fetchMarketFromRpc,
+  upsertMarketRow,
+} from "../../app/lib/markets-cache";
 import { makeSupabaseClient, runCacheSyncOnce } from "./cache-sync";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -82,11 +86,34 @@ function logMarket(record: MarketRecord, nowSec: number): string {
   return `${shortAddr(addr)} | "${m.question}" | target=$${m.targetPrice} | pool=${m.yesShares + m.noShares} | t${secLeft >= 0 ? "-" : "+"}${Math.abs(secLeft)}s | resolved=${m.resolved} outcome=${outcomeStr}`;
 }
 
+/**
+ * Push a single resolved market row into `markets_cache` so realtime
+ * subscribers see the outcome within ~100 ms (rather than waiting for
+ * the next full reconciliation sweep).
+ */
+async function writeThroughMarket(
+  supabase: SupabaseClient | null,
+  rpcUrl: string,
+  address: string,
+): Promise<void> {
+  if (!supabase) return;
+  try {
+    const row = await fetchMarketFromRpc(rpcUrl, address);
+    if (row) await upsertMarketRow(supabase, row);
+  } catch (err) {
+    console.warn(
+      `[write-through] failed to upsert ${shortAddr(address)}:`,
+      (err as Error).message,
+    );
+  }
+}
+
 async function runCycle(
   config: KeeperConfig,
   connection: Connection,
   wallet: ReturnType<typeof keypairWallet>,
   inFlight: Set<string>,
+  supabase: SupabaseClient | null,
 ): Promise<void> {
   const nowSec = Math.floor(Date.now() / 1000);
   const markets = await fetchAllMarkets(connection, config.programId);
@@ -134,6 +161,9 @@ async function runCycle(
         Number(rec.data.resolutionTime),
       );
       console.log(`[ok] ${shortAddr(addr)} resolved; signatures: ${sigs.join(", ")}`);
+      // Immediately write-through to Supabase so users see "resolved" within
+      // ~500 ms, without waiting for the next full-sync cycle.
+      void writeThroughMarket(supabase, config.rpcUrl, addr);
     } catch (err) {
       const msg = (err as Error).message ?? String(err);
       // Expected races / transient failures we can tolerate
@@ -157,7 +187,9 @@ async function runCycle(
   }
 }
 
-function startCacheSync(config: KeeperConfig): { stop: () => void } {
+function startCacheSync(
+  config: KeeperConfig,
+): { stop: () => void; supabase: SupabaseClient | null } {
   const { enabled, intervalMs, supabaseUrl, serviceRoleKey } = config.cacheSync;
   if (!enabled) {
     if (!supabaseUrl || !serviceRoleKey) {
@@ -167,7 +199,7 @@ function startCacheSync(config: KeeperConfig): { stop: () => void } {
     } else {
       console.log("[cache-sync] disabled via KEEPER_CACHE_SYNC_DISABLED=true");
     }
-    return { stop: () => {} };
+    return { stop: () => {}, supabase: null };
   }
 
   const supabase: SupabaseClient = makeSupabaseClient(supabaseUrl!, serviceRoleKey!);
@@ -199,6 +231,7 @@ function startCacheSync(config: KeeperConfig): { stop: () => void } {
   const handle = setInterval(tick, intervalMs);
   return {
     stop: () => clearInterval(handle),
+    supabase,
   };
 }
 
@@ -237,6 +270,7 @@ async function main() {
   let stopping = false;
 
   const cacheSync = startCacheSync(config);
+  const supabase = cacheSync.supabase;
 
   const shutdown = (sig: string) => {
     if (stopping) return;
@@ -249,7 +283,7 @@ async function main() {
 
   while (!stopping) {
     try {
-      await runCycle(config, connection, wallet, inFlight);
+      await runCycle(config, connection, wallet, inFlight, supabase);
     } catch (err) {
       console.error("[cycle] unexpected error:", (err as Error).message);
     }

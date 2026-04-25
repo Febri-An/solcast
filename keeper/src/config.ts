@@ -93,7 +93,10 @@ export function loadConfig(): KeeperConfig {
   const cacheSyncIntervalMs = parseNumber(
     "KEEPER_CACHE_SYNC_INTERVAL_MS",
     process.env.KEEPER_CACHE_SYNC_INTERVAL_MS,
-    60_000,
+    // Full reconciliation interval. Write-through from the app handles the
+    // common case (<500 ms post-tx), so this only needs to catch external
+    // trades (CLI users, other clients) and keeper resolves.
+    10_000,
   );
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || undefined;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined;
