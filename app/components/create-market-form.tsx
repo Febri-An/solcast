@@ -7,6 +7,11 @@ import { useSendTransaction, useWalletConnection } from "@solana/react-hooks";
 import { getCreateMarketInstructionAsync } from "../generated/prediction_market";
 import { useProfile } from "../hooks/use-profile";
 import { deriveMarketAddress } from "../lib/program-pda";
+import {
+  formatMarketTargetUsd,
+  TARGET_PRICE_ENCODING_NANODOLLARS,
+  usdInputToNanodollars,
+} from "../lib/market-format";
 import { syncMarketRow } from "../lib/write-through";
 
 interface CreateMarketFormProps {
@@ -51,12 +56,6 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-function formatUsd(value: number): string {
-  return value.toLocaleString("en-US", {
-    maximumFractionDigits: 0,
-  });
-}
-
 export function CreateMarketForm({
   onCreated,
 }: CreateMarketFormProps): ReactNode {
@@ -78,8 +77,12 @@ export function CreateMarketForm({
     [selectedFeed],
   );
 
-  const priceNum = parseFloat(targetPrice);
-  const isValidPrice = !isNaN(priceNum) && priceNum > 0;
+  const targetPriceNanos = useMemo(
+    () => usdInputToNanodollars(targetPrice),
+    [targetPrice],
+  );
+
+  const isValidPrice = targetPriceNanos !== null;
 
   const liqNum = parseFloat(initialLiquidity);
   const isValidLiquidity = !isNaN(liqNum) && liqNum >= 0.1;
@@ -90,7 +93,7 @@ export function CreateMarketForm({
   const isFormValid = isValidPrice && isValidLiquidity && isValidFee;
 
   const question = isValidPrice
-    ? `Will ${feed.symbol} be above $${formatUsd(priceNum)}?`
+    ? `Will ${feed.symbol} be above $${formatMarketTargetUsd(targetPriceNanos, TARGET_PRICE_ENCODING_NANODOLLARS)}?`
     : "";
 
   const handleCreate = useCallback(async () => {
@@ -119,7 +122,8 @@ export function CreateMarketForm({
         question,
         resolutionTime,
         feedId: feedIdBytes,
-        targetPrice: BigInt(Math.floor(priceNum)),
+        targetPrice: targetPriceNanos,
+        targetPriceEncoding: TARGET_PRICE_ENCODING_NANODOLLARS,
         initialLiquidity: initialLiquidityLamports,
         feeBps,
       });
@@ -154,7 +158,7 @@ export function CreateMarketForm({
     durationMinutes,
     feed,
     question,
-    priceNum,
+    targetPriceNanos,
     liqNum,
     feeNum,
     send,
@@ -222,8 +226,8 @@ export function CreateMarketForm({
             <input
               type="number"
               min="0"
-              step="1"
-              placeholder="e.g. 80000"
+              step="any"
+              placeholder="e.g. 95000 or 140.505"
               value={targetPrice}
               onChange={(e) => setTargetPrice(e.target.value)}
               disabled={isSending}

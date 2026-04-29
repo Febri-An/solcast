@@ -39,6 +39,7 @@ pub mod prediction_market {
         resolution_time: i64,
         feed_id: [u8; 32],
         target_price: i64,
+        target_price_encoding: u8,
         initial_liquidity: u64,
         fee_bps: u16,
     ) -> Result<()> {
@@ -48,6 +49,10 @@ pub mod prediction_market {
             MarketError::Unauthorized
         );
         require!(question.len() <= MAX_QUESTION_LEN, MarketError::Overflow);
+        require!(
+            target_price_encoding == 0 || target_price_encoding == 1,
+            MarketError::InvalidTargetPriceEncoding
+        );
         require!(target_price > 0, MarketError::InvalidTargetPrice);
         require!(fee_bps <= MAX_FEE_BPS, MarketError::InvalidFee);
         require!(
@@ -80,6 +85,7 @@ pub mod prediction_market {
         market.resolution_time = resolution_time;
         market.feed_id = feed_id;
         market.target_price = target_price;
+        market.target_price_encoding = target_price_encoding;
         market.yes_shares = initial_liquidity;
         market.no_shares = initial_liquidity;
         market.yes_supply_user = 0;
@@ -291,13 +297,23 @@ pub mod prediction_market {
         );
 
         let neg_exp = (-price.exponent) as u32;
-        let target_scaled = (market.target_price as i128)
-            .checked_mul(
-                10i128
-                    .checked_pow(neg_exp)
-                    .ok_or(MarketError::Overflow)?,
-            )
+        let pow = 10i128
+            .checked_pow(neg_exp)
             .ok_or(MarketError::Overflow)?;
+        let target_scaled = match market.target_price_encoding {
+            0 => (market.target_price as i128)
+                .checked_mul(pow)
+                .ok_or(MarketError::Overflow)?,
+            1 => {
+                const USD_NANOS: i128 = 1_000_000_000;
+                (market.target_price as i128)
+                    .checked_mul(pow)
+                    .ok_or(MarketError::Overflow)?
+                    .checked_div(USD_NANOS)
+                    .ok_or(MarketError::Overflow)?
+            }
+            _ => return err!(MarketError::InvalidTargetPriceEncoding),
+        };
         let outcome = (price.price as i128) > target_scaled;
 
         msg!(

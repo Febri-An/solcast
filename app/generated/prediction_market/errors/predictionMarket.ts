@@ -32,26 +32,28 @@ export const PREDICTION_MARKET_ERROR__NO_WINNINGS = 0x1776; // 6006
 export const PREDICTION_MARKET_ERROR__OVERFLOW = 0x1777; // 6007
 /** InvalidTargetPrice: Target price must be greater than zero */
 export const PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE = 0x1778; // 6008
+/** InvalidTargetPriceEncoding: target_price_encoding must be 0 (whole USD) or 1 (nanodollars, USD * 1e9) */
+export const PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE_ENCODING = 0x1779; // 6009
 /** ResolveWindowClosed: Resolve window has closed */
-export const PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED = 0x1779; // 6009
+export const PREDICTION_MARKET_ERROR__RESOLVE_WINDOW_CLOSED = 0x177a; // 6010
 /** InvalidPriceTimestamp: Price update timestamp is outside the allowed resolution window */
-export const PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP = 0x177a; // 6010
+export const PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP = 0x177b; // 6011
 /** Unauthorized: Only the admin can perform this action */
-export const PREDICTION_MARKET_ERROR__UNAUTHORIZED = 0x177b; // 6011
+export const PREDICTION_MARKET_ERROR__UNAUTHORIZED = 0x177c; // 6012
 /** InvalidFee: Swap fee in basis points is above the allowed maximum */
-export const PREDICTION_MARKET_ERROR__INVALID_FEE = 0x177c; // 6012
+export const PREDICTION_MARKET_ERROR__INVALID_FEE = 0x177d; // 6013
 /** InitialLiquidityTooLow: Initial liquidity is below the required minimum */
-export const PREDICTION_MARKET_ERROR__INITIAL_LIQUIDITY_TOO_LOW = 0x177d; // 6013
+export const PREDICTION_MARKET_ERROR__INITIAL_LIQUIDITY_TOO_LOW = 0x177e; // 6014
 /** SlippageExceeded: Computed output is below the requested minimum (slippage too high) */
-export const PREDICTION_MARKET_ERROR__SLIPPAGE_EXCEEDED = 0x177e; // 6014
+export const PREDICTION_MARKET_ERROR__SLIPPAGE_EXCEEDED = 0x177f; // 6015
 /** PoolDepleted: Pool has insufficient shares to fulfil the swap */
-export const PREDICTION_MARKET_ERROR__POOL_DEPLETED = 0x177f; // 6015
+export const PREDICTION_MARKET_ERROR__POOL_DEPLETED = 0x1780; // 6016
 /** InsufficientShares: User does not hold enough shares for this operation */
-export const PREDICTION_MARKET_ERROR__INSUFFICIENT_SHARES = 0x1780; // 6016
+export const PREDICTION_MARKET_ERROR__INSUFFICIENT_SHARES = 0x1781; // 6017
 /** LiquidityAlreadyWithdrawn: Liquidity has already been withdrawn */
-export const PREDICTION_MARKET_ERROR__LIQUIDITY_ALREADY_WITHDRAWN = 0x1781; // 6017
+export const PREDICTION_MARKET_ERROR__LIQUIDITY_ALREADY_WITHDRAWN = 0x1782; // 6018
 /** TradingAfterResolve: Trading is not allowed after market resolve */
-export const PREDICTION_MARKET_ERROR__TRADING_AFTER_RESOLVE = 0x1782; // 6018
+export const PREDICTION_MARKET_ERROR__TRADING_AFTER_RESOLVE = 0x1783; // 6019
 
 export type PredictionMarketError =
   | typeof PREDICTION_MARKET_ERROR__ALREADY_RESOLVED
@@ -62,6 +64,7 @@ export type PredictionMarketError =
   | typeof PREDICTION_MARKET_ERROR__INVALID_FEE
   | typeof PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP
   | typeof PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE
+  | typeof PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE_ENCODING
   | typeof PREDICTION_MARKET_ERROR__LIQUIDITY_ALREADY_WITHDRAWN
   | typeof PREDICTION_MARKET_ERROR__NOT_RESOLVED
   | typeof PREDICTION_MARKET_ERROR__NO_WINNINGS
@@ -87,6 +90,7 @@ if (process.env.NODE_ENV !== "production") {
     [PREDICTION_MARKET_ERROR__INVALID_FEE]: `Swap fee in basis points is above the allowed maximum`,
     [PREDICTION_MARKET_ERROR__INVALID_PRICE_TIMESTAMP]: `Price update timestamp is outside the allowed resolution window`,
     [PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE]: `Target price must be greater than zero`,
+    [PREDICTION_MARKET_ERROR__INVALID_TARGET_PRICE_ENCODING]: `target_price_encoding must be 0 (whole USD) or 1 (nanodollars, USD * 1e9)`,
     [PREDICTION_MARKET_ERROR__LIQUIDITY_ALREADY_WITHDRAWN]: `Liquidity has already been withdrawn`,
     [PREDICTION_MARKET_ERROR__NOT_RESOLVED]: `Market has not been resolved yet`,
     [PREDICTION_MARKET_ERROR__NO_WINNINGS]: `No winnings to claim`,

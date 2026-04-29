@@ -71,7 +71,10 @@ export type Market = {
   resolutionTime: bigint;
   /** Pyth price feed identifier (e.g. BTC/USD, SOL/USD) */
   feedId: ReadonlyUint8Array;
-  /** Target price in whole USD (e.g. 79000 = $79,000). YES = price above target. */
+  /**
+   * Strike in USD: either whole dollars (`target_price_encoding == 0`, e.g. 79000 = $79,000)
+   * or nanodollars (`target_price_encoding == 1`, e.g. 79_000_000_000_000 = $79,000.000).
+   */
   targetPrice: bigint;
   /** YES shares currently held by the AMM pool. */
   yesShares: bigint;
@@ -90,6 +93,8 @@ export type Market = {
   resolved: boolean;
   /** `Some(true)` = YES won, `Some(false)` = NO won. */
   outcome: Option<boolean>;
+  /** `0` = `target_price` is whole USD. `1` = `target_price` is USD × 1e9 (9 decimal places). */
+  targetPriceEncoding: number;
   bump: number;
 };
 
@@ -100,7 +105,10 @@ export type MarketArgs = {
   resolutionTime: number | bigint;
   /** Pyth price feed identifier (e.g. BTC/USD, SOL/USD) */
   feedId: ReadonlyUint8Array;
-  /** Target price in whole USD (e.g. 79000 = $79,000). YES = price above target. */
+  /**
+   * Strike in USD: either whole dollars (`target_price_encoding == 0`, e.g. 79000 = $79,000)
+   * or nanodollars (`target_price_encoding == 1`, e.g. 79_000_000_000_000 = $79,000.000).
+   */
   targetPrice: number | bigint;
   /** YES shares currently held by the AMM pool. */
   yesShares: number | bigint;
@@ -119,6 +127,8 @@ export type MarketArgs = {
   resolved: boolean;
   /** `Some(true)` = YES won, `Some(false)` = NO won. */
   outcome: OptionOrNullable<boolean>;
+  /** `0` = `target_price` is whole USD. `1` = `target_price` is USD × 1e9 (9 decimal places). */
+  targetPriceEncoding: number;
   bump: number;
 };
 
@@ -142,6 +152,7 @@ export function getMarketEncoder(): Encoder<MarketArgs> {
       ["liquidityWithdrawn", getBooleanEncoder()],
       ["resolved", getBooleanEncoder()],
       ["outcome", getOptionEncoder(getBooleanEncoder())],
+      ["targetPriceEncoding", getU8Encoder()],
       ["bump", getU8Encoder()],
     ]),
     (value) => ({ ...value, discriminator: MARKET_DISCRIMINATOR }),
@@ -167,6 +178,7 @@ export function getMarketDecoder(): Decoder<Market> {
     ["liquidityWithdrawn", getBooleanDecoder()],
     ["resolved", getBooleanDecoder()],
     ["outcome", getOptionDecoder(getBooleanDecoder())],
+    ["targetPriceEncoding", getU8Decoder()],
     ["bump", getU8Decoder()],
   ]);
 }

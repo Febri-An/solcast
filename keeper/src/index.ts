@@ -18,6 +18,7 @@ import { loadConfig, type KeeperConfig } from "./config";
 import { loadKeypair, keypairWallet } from "./wallet";
 import { fetchAllMarkets, type MarketRecord } from "./markets";
 import { resolveMarketWithPyth } from "../../app/lib/pyth";
+import { formatMarketTargetUsd } from "../../app/lib/market-format";
 import {
   fetchMarketFromRpc,
   upsertMarketRow,
@@ -83,7 +84,8 @@ function logMarket(record: MarketRecord, nowSec: number): string {
       ? "YES"
       : "NO"
     : "—";
-  return `${shortAddr(addr)} | "${m.question}" | target=$${m.targetPrice} | pool=${m.yesShares + m.noShares} | t${secLeft >= 0 ? "-" : "+"}${Math.abs(secLeft)}s | resolved=${m.resolved} outcome=${outcomeStr}`;
+  const targetLabel = formatMarketTargetUsd(m.targetPrice, m.targetPriceEncoding);
+  return `${shortAddr(addr)} | "${m.question}" | target=$${targetLabel} | pool=${m.yesShares + m.noShares} | t${secLeft >= 0 ? "-" : "+"}${Math.abs(secLeft)}s | resolved=${m.resolved} outcome=${outcomeStr}`;
 }
 
 /**

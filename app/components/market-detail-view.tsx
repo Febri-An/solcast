@@ -13,8 +13,8 @@ import { useMarketTrading, unwrapOutcome } from "../hooks/use-market-trading";
 import { useProfile } from "../hooks/use-profile";
 import {
   formatCountdownMmSs,
+  formatMarketTargetUsd,
   formatSol,
-  formatUsdWhole,
   formatVolume,
   getTimeRemaining,
   isShortLiveWindowMarket,
@@ -232,7 +232,9 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
               <p>
                 <span className="text-foreground font-medium">YES</span> wins if the oracle price is{" "}
                 <span className="text-foreground font-medium">strictly above</span>{" "}
-                <span className="font-mono text-foreground">${formatUsdWhole(market.targetPrice)}</span>{" "}
+                <span className="font-mono text-foreground">
+                  ${formatMarketTargetUsd(market.targetPrice, market.targetPriceEncoding)}
+                </span>{" "}
                 USD at resolution. Otherwise <span className="text-foreground font-medium">NO</span>{" "}
                 wins.
               </p>
@@ -252,7 +254,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
               <div className="flex justify-between gap-4 border-b border-border-low pb-3">
                 <span className="text-muted">Target (USD)</span>
                 <span className="font-mono font-medium text-foreground">
-                  ${formatUsdWhole(market.targetPrice)}
+                  ${formatMarketTargetUsd(market.targetPrice, market.targetPriceEncoding)}
                 </span>
               </div>
               <div className="flex justify-between gap-4 border-b border-border-low pb-3">

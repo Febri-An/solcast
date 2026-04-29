@@ -31,7 +31,8 @@ pub struct Market {
     pub resolution_time: i64,
     /// Pyth price feed identifier (e.g. BTC/USD, SOL/USD)
     pub feed_id: [u8; 32],
-    /// Target price in whole USD (e.g. 79000 = $79,000). YES = price above target.
+    /// Strike in USD: either whole dollars (`target_price_encoding == 0`, e.g. 79000 = $79,000)
+    /// or nanodollars (`target_price_encoding == 1`, e.g. 79_000_000_000_000 = $79,000.000).
     pub target_price: i64,
 
     /// YES shares currently held by the AMM pool.
@@ -53,6 +54,8 @@ pub struct Market {
     pub resolved: bool,
     /// `Some(true)` = YES won, `Some(false)` = NO won.
     pub outcome: Option<bool>,
+    /// `0` = `target_price` is whole USD. `1` = `target_price` is USD × 1e9 (9 decimal places).
+    pub target_price_encoding: u8,
     pub bump: u8,
 }
 
