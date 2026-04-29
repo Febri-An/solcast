@@ -429,14 +429,14 @@ export function MarketCard({
                 onClick={(e) => e.stopPropagation()}
                 className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20"
               >
-                Yes {yesPercent}¢
+                Yes {yesPercent}%
               </Link>
               <Link
                 href={marketHref}
                 onClick={(e) => e.stopPropagation()}
                 className="rounded-lg bg-red-muted text-red-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red/20"
               >
-                No {noPercent}¢
+                No {noPercent}%
               </Link>
             </>
           )}
@@ -462,14 +462,14 @@ export function MarketCard({
                 onClick={(e) => e.stopPropagation()}
                 className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20"
               >
-                Yes {yesPercent}¢
+                Yes {yesPercent}%
               </Link>
               <Link
                 href={marketHref}
                 onClick={(e) => e.stopPropagation()}
                 className="rounded-lg bg-red-muted text-red-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red/20"
               >
-                No {noPercent}¢
+                No {noPercent}%
               </Link>
             </>
           )}
@@ -518,7 +518,7 @@ export function MarketCard({
                   : "bg-red-muted text-red-text"
               }`}
             >
-              {unwrapOutcome(market.outcome) ? `Yes ${yesPercent}¢` : `No ${noPercent}¢`}
+              {unwrapOutcome(market.outcome) ? `Yes ${yesPercent}%` : `No ${noPercent}%`}
             </span>
           )}
         </div>

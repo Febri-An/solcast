@@ -322,7 +322,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                         <div className="flex justify-between">
                           <span className="text-green-text">Buy YES →</span>
                           <span>
-                            {formatSol(yesQuote.out)} shares @ {(yesQuote.effectivePriceBps / 100).toFixed(1)}¢
+                            {formatSol(yesQuote.out)} shares @ {(yesQuote.effectivePriceBps / 100).toFixed(1)}%
                           </span>
                         </div>
                       )}
@@ -330,7 +330,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                         <div className="flex justify-between">
                           <span className="text-red-text">Buy NO →</span>
                           <span>
-                            {formatSol(noQuote.out)} shares @ {(noQuote.effectivePriceBps / 100).toFixed(1)}¢
+                            {formatSol(noQuote.out)} shares @ {(noQuote.effectivePriceBps / 100).toFixed(1)}%
                           </span>
                         </div>
                       )}
@@ -346,7 +346,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                       disabled={isSending || !tradeAmount || parseFloat(tradeAmount) <= 0}
                       className="rounded-xl bg-green-muted py-3 text-sm font-bold text-green-text transition-colors hover:bg-green/20 disabled:opacity-40"
                     >
-                      Yes {yesPercent}¢
+                      Yes {yesPercent}%
                     </button>
                     <button
                       type="button"
@@ -354,7 +354,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                       disabled={isSending || !tradeAmount || parseFloat(tradeAmount) <= 0}
                       className="rounded-xl bg-red-muted py-3 text-sm font-bold text-red-text transition-colors hover:bg-red/20 disabled:opacity-40"
                     >
-                      No {noPercent}¢
+                      No {noPercent}%
                     </button>
                   </div>
                   <p className="text-[11px] text-muted leading-relaxed">
