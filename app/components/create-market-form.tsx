@@ -13,6 +13,7 @@ import {
   usdInputToNanodollars,
 } from "../lib/market-format";
 import { syncMarketRow } from "../lib/write-through";
+import { useToast } from "./toast";
 
 interface CreateMarketFormProps {
   onCreated?: () => void;
@@ -62,6 +63,7 @@ export function CreateMarketForm({
   const { wallet, status } = useWalletConnection();
   const { send, isSending } = useSendTransaction();
   const { isComplete: isProfileComplete, configured, openProfileModal } = useProfile();
+  const { showToast } = useToast();
 
   const [selectedFeed, setSelectedFeed] = useState(PRICE_FEEDS[0].feedId);
   const [targetPrice, setTargetPrice] = useState("");
@@ -100,11 +102,13 @@ export function CreateMarketForm({
     if (!wallet || !walletAddress || !isFormValid) return;
     if (configured && !isProfileComplete) {
       setTxStatus("Set a username in your profile before creating a market.");
+      showToast("Set a username in your profile first.", { variant: "error" });
       return;
     }
 
     try {
       setTxStatus("Creating market...");
+      showToast("Creating market...", { variant: "loading" });
 
       const marketId = BigInt(Date.now());
       const nowInSeconds = Math.floor(Date.now() / MILLISECONDS_PER_SECOND);
@@ -145,11 +149,13 @@ export function CreateMarketForm({
       setInitialLiquidity("0.5");
       setFeePercent("2");
       setTxStatus(null);
+      showToast("Market created successfully.");
       onCreated?.();
     } catch (err) {
       console.error("Create market failed:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
       setTxStatus(`Error: ${message}`);
+      showToast(`Create failed: ${message}`, { variant: "error", durationMs: 5000 });
     }
   }, [
     wallet,
@@ -165,6 +171,7 @@ export function CreateMarketForm({
     onCreated,
     configured,
     isProfileComplete,
+    showToast,
   ]);
 
   if (status !== "connected") {

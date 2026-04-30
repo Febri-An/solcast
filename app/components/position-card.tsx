@@ -96,6 +96,7 @@ export function PositionCard({
 
     try {
       setTxStatus("Redeeming...");
+      showToast("Redeeming winnings...", { variant: "loading" });
 
       const instruction = await getRedeemInstructionAsync({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wallet adapter vs Codama signer types
@@ -111,6 +112,7 @@ export function PositionCard({
       console.error("Redeem failed:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
       setTxStatus(`Error: ${message}`);
+      showToast(`Redeem failed: ${message}`, { variant: "error", durationMs: 5000 });
     }
   }, [wallet, marketAddress, send, onUpdate, showToast]);
 

@@ -22,6 +22,7 @@ import {
 } from "../lib/amm-math";
 import { LAMPORTS_PER_SOL } from "../lib/market-format";
 import { syncMarketAndPosition, syncMarketRow } from "../lib/write-through";
+import { useToast } from "../components/toast";
 import { useProfile } from "./use-profile";
 import { useUserPositionRealtime } from "./use-positions-realtime";
 
@@ -122,6 +123,7 @@ export function useMarketTrading(
   const onRedeemSuccess = options?.onRedeemSuccess;
   const { wallet, status } = useWalletConnection();
   const { send, isSending } = useSendTransaction();
+  const { showToast } = useToast();
   const { isComplete: isProfileComplete } = useProfile();
 
   const [tradeAmount, setTradeAmount] = useState("");
@@ -197,15 +199,20 @@ export function useMarketTrading(
       if (!wallet || !walletAddress || !tradeAmount) return;
       if (!isProfileComplete) {
         setTxStatus("Set a username in your profile before trading.");
+        showToast("Set a username in your profile before trading.", {
+          variant: "error",
+        });
         setTimeout(() => setTxStatus(null), STATUS_CLEAR_DELAY_MS);
         return;
       }
 
       try {
         setTxStatus("Building transaction...");
+        showToast("Preparing buy transaction...", { variant: "loading" });
         const amount = BigInt(Math.floor(parseFloat(tradeAmount) * Number(LAMPORTS_PER_SOL)));
         if (amount <= 0n) {
           setTxStatus("Enter an amount greater than zero.");
+          showToast("Enter an amount greater than zero.", { variant: "error" });
           return;
         }
 
@@ -215,6 +222,7 @@ export function useMarketTrading(
         const quote = quoteBuy(yesShares, noShares, amount, buyYes, feeBps);
         if (isTradeError(quote)) {
           setTxStatus(`Quote failed: ${quote}`);
+          showToast(`Quote failed: ${quote}`, { variant: "error" });
           return;
         }
         const minOut = applySlippage(quote.out, DEFAULT_SLIPPAGE_BPS);
@@ -229,6 +237,7 @@ export function useMarketTrading(
         });
 
         setTxStatus("Awaiting signature...");
+        showToast("Awaiting wallet signature...", { variant: "loading" });
         await send({ instructions: [instruction] });
 
         // Optimistic overlay: the AMM math mirrors on-chain, so our expected
@@ -244,11 +253,14 @@ export function useMarketTrading(
 
         setTradeAmount("");
         setTxStatus(null);
+        showToast(`Buy executed: received ${quote.out.toString()} shares.`);
         onTradeSuccess?.();
         onUpdate?.();
       } catch (err) {
         logTxError("Buy failed", err);
-        setTxStatus(`Error: ${formatTxError(err)}`);
+        const message = formatTxError(err);
+        setTxStatus(`Error: ${message}`);
+        showToast(`Buy failed: ${message}`, { variant: "error", durationMs: 5000 });
         setOptimisticOverlay(null);
       }
     },
@@ -274,10 +286,12 @@ export function useMarketTrading(
 
       try {
         setTxStatus("Building transaction...");
+        showToast("Preparing sell transaction...", { variant: "loading" });
         // Quote against overlay-aware pool state (see handleBuy for rationale).
         const quote = quoteSell(yesShares, noShares, sharesIn, sellYes);
         if (isTradeError(quote)) {
           setTxStatus(`Quote failed: ${quote}`);
+          showToast(`Quote failed: ${quote}`, { variant: "error" });
           return;
         }
         const minSol = applySlippage(quote.out, DEFAULT_SLIPPAGE_BPS);
@@ -292,6 +306,7 @@ export function useMarketTrading(
         });
 
         setTxStatus("Awaiting signature...");
+        showToast("Awaiting wallet signature...", { variant: "loading" });
         await send({ instructions: [instruction] });
 
         // Optimistic overlay: mirror the quote's post-sell pool reserves so
@@ -304,11 +319,14 @@ export function useMarketTrading(
         void syncMarketAndPosition(marketAddress, walletAddress);
 
         setTxStatus(null);
+        showToast(`Sell executed: received ${quote.out.toString()} lamports.`);
         onTradeSuccess?.();
         onUpdate?.();
       } catch (err) {
         logTxError("Sell failed", err);
-        setTxStatus(`Error: ${formatTxError(err)}`);
+        const message = formatTxError(err);
+        setTxStatus(`Error: ${message}`);
+        showToast(`Sell failed: ${message}`, { variant: "error", durationMs: 5000 });
         setOptimisticOverlay(null);
       }
     },
@@ -330,11 +348,13 @@ export function useMarketTrading(
     try {
       setIsResolving(true);
       setTxStatus("Fetching Pyth price...");
+      showToast("Fetching oracle price...", { variant: "loading" });
 
       const connection = getWeb3Connection();
       const anchorWallet = createAnchorWallet(wallet);
 
       setTxStatus("Resolving with oracle...");
+      showToast("Resolving market on-chain...", { variant: "loading" });
       const signatures = await resolveMarketWithPyth(
         connection,
         anchorWallet,
@@ -345,6 +365,7 @@ export function useMarketTrading(
 
       const lastSig = signatures[signatures.length - 1];
       setTxStatus(`Resolved! ${lastSig?.slice(0, 8)}...`);
+      showToast(`Market resolved (${lastSig?.slice(0, 8)}...)`);
 
       void syncMarketRow(marketAddress);
 
@@ -352,17 +373,20 @@ export function useMarketTrading(
       onUpdate?.();
     } catch (err) {
       logTxError("Resolve failed", err);
-      setTxStatus(`Error: ${formatTxError(err)}`);
+      const message = formatTxError(err);
+      setTxStatus(`Error: ${message}`);
+      showToast(`Resolve failed: ${message}`, { variant: "error", durationMs: 5000 });
     } finally {
       setIsResolving(false);
     }
-  }, [wallet, walletAddress, marketAddress, market.feedId, onUpdate, resolutionTime]);
+  }, [wallet, walletAddress, marketAddress, market.feedId, onUpdate, resolutionTime, showToast]);
 
   const handleRedeem = useCallback(async () => {
     if (!wallet || !walletAddress) return;
 
     try {
       setTxStatus("Redeeming...");
+      showToast("Redeeming winnings...", { variant: "loading" });
 
       const instruction = await getRedeemInstructionAsync({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wallet adapter vs Codama signer types
@@ -372,6 +396,7 @@ export function useMarketTrading(
 
       await send({ instructions: [instruction] });
       setTxStatus(null);
+      showToast("Winnings redeemed successfully.");
 
       // Redeem zeroes the winning shares and may decrement supply counters
       // on the market. Sync both so the UI reflects the settlement right away.
@@ -381,9 +406,11 @@ export function useMarketTrading(
       onUpdate?.();
     } catch (err) {
       logTxError("Redeem failed", err);
-      setTxStatus(`Error: ${formatTxError(err)}`);
+      const message = formatTxError(err);
+      setTxStatus(`Error: ${message}`);
+      showToast(`Redeem failed: ${message}`, { variant: "error", durationMs: 5000 });
     }
-  }, [wallet, walletAddress, marketAddress, send, onUpdate, onRedeemSuccess]);
+  }, [wallet, walletAddress, marketAddress, send, onUpdate, onRedeemSuccess, showToast]);
 
   const canRedeem = useMemo(() => {
     if (status !== "connected" || !isResolved || !userPosition) return false;
