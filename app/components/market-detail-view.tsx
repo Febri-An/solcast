@@ -22,6 +22,7 @@ import {
 } from "../lib/market-format";
 import { getAssetLabelForFeed, getTradingViewSymbolForFeed } from "../lib/price-feeds";
 import { TradingViewChart } from "./tradingview-chart";
+import { ProbabilityPercent } from "./probability-percent";
 import { useToast } from "./toast";
 
 type DetailTab = "chart" | "rules" | "context";
@@ -168,13 +169,25 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
         <div className="flex shrink-0 items-center gap-4 rounded-2xl border border-border-low bg-bg2 px-5 py-4">
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Chance</p>
-            <p className="text-3xl font-bold font-mono text-green-text">{yesPercent}%</p>
+            <p className="leading-none">
+              <ProbabilityPercent
+                value={yesPercent}
+                variant="yes"
+                className="text-3xl font-bold font-mono"
+              />
+            </p>
             <p className="text-xs text-muted">yes</p>
           </div>
           <div className="h-12 w-px bg-border-low" />
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted">&nbsp;</p>
-            <p className="text-3xl font-bold font-mono text-red-text">{noPercent}%</p>
+            <p className="leading-none">
+              <ProbabilityPercent
+                value={noPercent}
+                variant="no"
+                className="text-3xl font-bold font-mono"
+              />
+            </p>
             <p className="text-xs text-muted">no</p>
           </div>
         </div>
@@ -349,7 +362,8 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                       disabled={isSending || !tradeAmount || parseFloat(tradeAmount) <= 0}
                       className="rounded-xl bg-green-muted py-3 text-sm font-bold text-green-text transition-colors hover:bg-green/20 disabled:opacity-40"
                     >
-                      Yes {yesPercent}%
+                      Yes{" "}
+                      <ProbabilityPercent value={yesPercent} variant="yes" className="inline font-bold" />
                     </button>
                     <button
                       type="button"
@@ -357,7 +371,8 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                       disabled={isSending || !tradeAmount || parseFloat(tradeAmount) <= 0}
                       className="rounded-xl bg-red-muted py-3 text-sm font-bold text-red-text transition-colors hover:bg-red/20 disabled:opacity-40"
                     >
-                      No {noPercent}%
+                      No{" "}
+                      <ProbabilityPercent value={noPercent} variant="no" className="inline font-bold" />
                     </button>
                   </div>
                   <p className="text-[11px] text-muted leading-relaxed">

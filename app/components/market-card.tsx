@@ -11,12 +11,14 @@ import { useWalletConnection } from "@solana/react-hooks";
 import { type Market } from "../generated/prediction_market";
 import { useMarketTrading } from "../hooks/use-market-trading";
 import { useProfile } from "../hooks/use-profile";
+import { useProbabilityFlash } from "../hooks/use-probability-flash";
 import {
   resolutionCountdownTextClassName,
   useResolutionCountdown,
 } from "../hooks/use-resolution-countdown";
 import { formatSol, formatVolume, isShortLiveWindowMarket } from "../lib/market-format";
 import { getAssetBrandName, getAssetIconSrc } from "../lib/price-feeds";
+import { ProbabilityPercent } from "./probability-percent";
 import { useToast } from "./toast";
 
 interface MarketCardProps {
@@ -36,6 +38,7 @@ const TRADE_HASH = "#market-trade";
 
 function SentimentRing({ percent, compact }: { percent: number; compact?: boolean }): ReactNode {
   const value = Math.min(100, Math.max(0, percent));
+  const flash = useProbabilityFlash(value);
   const width = compact ? 68 : 92;
   const height = compact ? 44 : 58;
   const cx = width / 2;
@@ -60,6 +63,13 @@ function SentimentRing({ percent, compact }: { percent: number; compact?: boolea
   };
 
   const sentiment = getSentiment(value);
+
+  const pctColorClass =
+    flash === "up"
+      ? "text-green-400"
+      : flash === "down"
+        ? "text-red-400"
+        : "text-foreground";
 
   return (
     <div
@@ -134,7 +144,7 @@ function SentimentRing({ percent, compact }: { percent: number; compact?: boolea
       </svg>
 
       <span
-        className={`relative z-[1] font-bold font-mono leading-none text-foreground ${
+        className={`relative z-[1] font-bold font-mono leading-none transition-colors duration-700 ${pctColorClass} ${
           compact ? "mt-0.5 text-[10px]" : "mt-1 text-[12px]"
         }`}
       >
@@ -450,14 +460,16 @@ export function MarketCard({
                 onClick={(e) => e.stopPropagation()}
                 className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20"
               >
-                Yes {yesPercent}%
+                Yes{" "}
+                <ProbabilityPercent value={yesPercent} variant="yes" className="inline font-semibold" />
               </Link>
               <Link
                 href={marketHref}
                 onClick={(e) => e.stopPropagation()}
                 className="rounded-lg bg-red-muted text-red-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red/20"
               >
-                No {noPercent}%
+                No{" "}
+                <ProbabilityPercent value={noPercent} variant="no" className="inline font-semibold" />
               </Link>
             </>
           )}
@@ -483,14 +495,16 @@ export function MarketCard({
                 onClick={(e) => e.stopPropagation()}
                 className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20"
               >
-                Yes {yesPercent}%
+                Yes{" "}
+                <ProbabilityPercent value={yesPercent} variant="yes" className="inline font-semibold" />
               </Link>
               <Link
                 href={marketHref}
                 onClick={(e) => e.stopPropagation()}
                 className="rounded-lg bg-red-muted text-red-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red/20"
               >
-                No {noPercent}%
+                No{" "}
+                <ProbabilityPercent value={noPercent} variant="no" className="inline font-semibold" />
               </Link>
             </>
           )}
@@ -539,7 +553,17 @@ export function MarketCard({
                   : "bg-red-muted text-red-text"
               }`}
             >
-              {unwrapOutcome(market.outcome) ? `Yes ${yesPercent}%` : `No ${noPercent}%`}
+              {unwrapOutcome(market.outcome) ? (
+                <>
+                  Yes{" "}
+                  <ProbabilityPercent value={yesPercent} variant="yes" className="inline" />
+                </>
+              ) : (
+                <>
+                  No{" "}
+                  <ProbabilityPercent value={noPercent} variant="no" className="inline" />
+                </>
+              )}
             </span>
           )}
         </div>
