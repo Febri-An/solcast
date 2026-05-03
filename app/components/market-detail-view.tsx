@@ -22,6 +22,7 @@ import {
 } from "../lib/market-format";
 import { getAssetLabelForFeed, getTradingViewSymbolForFeed } from "../lib/price-feeds";
 import { TradingViewChart } from "./tradingview-chart";
+import { ProbabilityHistoryChart } from "./probability-history-chart";
 import { ProbabilityPercent } from "./probability-percent";
 import { useToast } from "./toast";
 
@@ -218,20 +219,26 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
           </div>
 
           {tab === "chart" && (
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-xs text-muted">
-                  Live chart via TradingView — {tvSymbol.replace(":", " · ")}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void onRefresh()}
-                  className="text-xs text-muted hover:text-foreground-secondary transition-colors"
-                >
-                  Refresh data
-                </button>
+            <div className="space-y-6">
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted">
+                    Live chart via TradingView — {tvSymbol.replace(":", " · ")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void onRefresh()}
+                    className="text-xs text-muted hover:text-foreground-secondary transition-colors"
+                  >
+                    Refresh data
+                  </button>
+                </div>
+                <TradingViewChart symbol={tvSymbol} height={440} />
               </div>
-              <TradingViewChart symbol={tvSymbol} height={440} />
+              <ProbabilityHistoryChart
+                marketAddress={marketAddress}
+                poolRevision={`${market.yesShares}-${market.noShares}-${market.resolved}-${unwrapOutcome(market.outcome) ?? "pending"}`}
+              />
             </div>
           )}
 

@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getMarketDecoder, PREDICTION_MARKET_PROGRAM_ADDRESS, type Market } from "../generated/prediction_market";
 import type { Address } from "@solana/kit";
+import { yesPriceBps } from "./amm-math";
 
 /** Base58 memcmp filter for Market accounts (Anchor 8-byte discriminator). */
 export const MARKET_DISCRIMINATOR_BASE58 = "dkokXHR3DTw";
@@ -125,6 +126,60 @@ export async function fetchMarketFromRpc(
   return { address, accountDataBase64: b64 };
 }
 
+/** Anchor point when odds are unchanged — avoids spamming identical rows every keeper tick. */
+const SNAPSHOT_HEARTBEAT_MS = 300_000;
+
+export async function maybeInsertMarketSnapshot(
+  supabase: SupabaseClient,
+  row: RpcMarketRow,
+): Promise<void> {
+  try {
+    const { market } = decodeMarketRow(row);
+    const yes = market.yesShares;
+    const no = market.noShares;
+    const yesBps = yesPriceBps(yes, no);
+    const totalPool = yes + no;
+
+    const { data: lastRow, error: selErr } = await supabase
+      .from("market_snapshots")
+      .select("yes_bps, total_pool, recorded_at")
+      .eq("market_address", row.address)
+      .order("recorded_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (selErr) {
+      console.warn("[market_snapshots] select last:", selErr.message);
+      return;
+    }
+
+    const now = Date.now();
+
+    if (lastRow) {
+      const lastBps = lastRow.yes_bps as number;
+      const lastPoolStr = String(lastRow.total_pool ?? "0");
+      const lastPool = BigInt(lastPoolStr);
+      const lastAt = new Date(lastRow.recorded_at as string).getTime();
+
+      const stateChanged = lastBps !== yesBps || lastPool !== totalPool;
+      const heartbeatDue = now - lastAt >= SNAPSHOT_HEARTBEAT_MS;
+
+      if (!stateChanged && !heartbeatDue) return;
+    }
+
+    const { error: insErr } = await supabase.from("market_snapshots").insert({
+      market_address: row.address,
+      yes_bps: yesBps,
+      total_pool: totalPool.toString(),
+      recorded_at: new Date().toISOString(),
+    });
+
+    if (insErr) console.warn("[market_snapshots] insert:", insErr.message);
+  } catch (err) {
+    console.warn("[market_snapshots]", row.address, (err as Error).message);
+  }
+}
+
 /** Upsert a single market row (used by detail API to keep cache fresh). */
 export async function upsertMarketRow(
   supabase: SupabaseClient,
@@ -139,6 +194,7 @@ export async function upsertMarketRow(
     { onConflict: "address" },
   );
   if (error) throw error;
+  await maybeInsertMarketSnapshot(supabase, row);
 }
 
 /**
@@ -162,6 +218,10 @@ export async function syncMarketsCache(
       { onConflict: "address" },
     );
     if (error) throw error;
+  }
+
+  for (const r of rows) {
+    await maybeInsertMarketSnapshot(supabase, r);
   }
 
   const { data: existing, error: selErr } = await supabase.from("markets_cache").select("address");
