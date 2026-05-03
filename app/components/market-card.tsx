@@ -12,11 +12,10 @@ import { type Market } from "../generated/prediction_market";
 import { useMarketTrading } from "../hooks/use-market-trading";
 import { useProfile } from "../hooks/use-profile";
 import {
-  formatSol,
-  formatVolume,
-  getTimeRemaining,
-  isShortLiveWindowMarket,
-} from "../lib/market-format";
+  resolutionCountdownTextClassName,
+  useResolutionCountdown,
+} from "../hooks/use-resolution-countdown";
+import { formatSol, formatVolume, isShortLiveWindowMarket } from "../lib/market-format";
 import { getAssetBrandName, getAssetIconSrc } from "../lib/price-feeds";
 import { useToast } from "./toast";
 
@@ -222,6 +221,11 @@ export function MarketCard({
   const isGrid = density === "grid";
   const shortLiveWindow = isShortLiveWindowMarket(market);
 
+  const { label: countdownLabel, urgency: countdownUrgency } = useResolutionCountdown(
+    resolutionTime,
+    showUpDownCard,
+  );
+
   if (showUpDownCard) {
     return (
       <div
@@ -248,8 +252,17 @@ export function MarketCard({
             </h3>
             {/* 2m/5m: no subtitle; LIVE in footer. Longer: time left here; vol in footer. */}
             {!shortLiveWindow && (
-              <p className={`mt-1 text-muted ${isGrid ? "text-[10px] leading-tight" : "text-xs"}`}>
-                {getTimeRemaining(resolutionTime)} left
+              <p className={`mt-1 ${isGrid ? "text-[10px] leading-tight" : "text-xs"}`}>
+                {countdownLabel === "Ended" ? (
+                  <span className="text-muted">Trading ended</span>
+                ) : (
+                  <>
+                    <span className={resolutionCountdownTextClassName(countdownUrgency)}>
+                      {countdownLabel}
+                    </span>
+                    <span className="text-muted"> left</span>
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -294,6 +307,14 @@ export function MarketCard({
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red" />
                   </span>
                   Live
+                </span>
+                <span className="text-border-strong">·</span>
+                <span
+                  className={`shrink-0 ${resolutionCountdownTextClassName(countdownUrgency)} ${
+                    isGrid ? "text-[9px]" : "text-[10px]"
+                  }`}
+                >
+                  {countdownLabel === "Ended" ? "Over" : countdownLabel}
                 </span>
                 <span className="truncate text-muted">{brandName}</span>
               </>

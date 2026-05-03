@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 
 import Link from "next/link";
 
@@ -12,29 +12,19 @@ import { useMarketRealtime } from "../hooks/use-markets-realtime";
 import { useMarketTrading, unwrapOutcome } from "../hooks/use-market-trading";
 import { useProfile } from "../hooks/use-profile";
 import {
-  formatCountdownMmSs,
+  resolutionCountdownTextClassName,
+  useResolutionCountdown,
+} from "../hooks/use-resolution-countdown";
+import {
   formatMarketTargetUsd,
   formatSol,
   formatVolume,
-  getTimeRemaining,
-  isShortLiveWindowMarket,
 } from "../lib/market-format";
 import { getAssetLabelForFeed, getTradingViewSymbolForFeed } from "../lib/price-feeds";
 import { TradingViewChart } from "./tradingview-chart";
 import { useToast } from "./toast";
 
 type DetailTab = "chart" | "rules" | "context";
-
-function useShortLiveCountdown(resolutionTimeSec: number, active: boolean): string {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!active) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [active, resolutionTimeSec]);
-  const diff = resolutionTimeSec - Date.now() / 1000;
-  return formatCountdownMmSs(diff);
-}
 
 interface MarketDetailViewProps {
   marketAddress: Address;
@@ -93,9 +83,11 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
   const yesQuote = quoteForBuy(true);
   const noQuote = quoteForBuy(false);
 
-  const shortLiveWindow = isShortLiveWindowMarket(market);
-  const shortLiveCountdownActive = Boolean(canTradeMarket && !isResolved && shortLiveWindow);
-  const shortLiveEndsLabel = useShortLiveCountdown(resolutionTime, shortLiveCountdownActive);
+  const countdownActive = Boolean(canTradeMarket && !isResolved);
+  const { label: countdownLabel, urgency: countdownUrgency } = useResolutionCountdown(
+    resolutionTime,
+    countdownActive,
+  );
 
   const tvSymbol = getTradingViewSymbolForFeed(market.feedId);
   const assetLabel = getAssetLabelForFeed(market.feedId);
@@ -144,11 +136,20 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                     d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                {canTradeMarket
-                  ? shortLiveWindow
-                    ? `Ends in ${shortLiveEndsLabel}`
-                    : `Ends in ${getTimeRemaining(resolutionTime)}`
-                  : "Awaiting resolution"}
+                {canTradeMarket ? (
+                  countdownLabel === "Ended" ? (
+                    <span className="font-mono text-xs text-muted">Trading ended</span>
+                  ) : (
+                    <>
+                      <span className="text-muted">Ends in </span>
+                      <span className={resolutionCountdownTextClassName(countdownUrgency)}>
+                        {countdownLabel}
+                      </span>
+                    </>
+                  )
+                ) : (
+                  "Awaiting resolution"
+                )}
               </span>
             )}
             {isResolved && outcome !== null && (

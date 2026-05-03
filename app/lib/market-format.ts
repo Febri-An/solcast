@@ -33,6 +33,28 @@ export function formatCountdownMmSs(remainingSec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function pad2(n: number): string {
+  return Math.floor(Math.max(0, n)).toString().padStart(2, "0");
+}
+
+/**
+ * Live resolution timer: hour+ as `2h 14m 03s`, under one hour as `00:59:03`.
+ */
+export function formatResolutionCountdownRemaining(diffSec: number): string {
+  if (diffSec <= 0) return "Ended";
+  const total = Math.floor(diffSec);
+  if (total >= 3600) {
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return `${h}h ${m}m ${pad2(s)}s`;
+  }
+  const h = Math.floor(total / 3600);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+}
+
 export function formatUsdWhole(value: bigint): string {
   return Number(value).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
