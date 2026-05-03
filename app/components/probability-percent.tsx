@@ -4,6 +4,12 @@ import { useProbabilityFlash } from "../hooks/use-probability-flash";
 
 export type ProbabilityVariant = "yes" | "no" | "neutral";
 
+/** Stable display: fixes float drift from `yesBps / 100` etc. */
+export function formatProbabilityPercentDisplay(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  return rounded.toFixed(2);
+}
+
 export interface ProbabilityPercentProps {
   value: number;
   variant: ProbabilityVariant;
@@ -30,7 +36,7 @@ export function ProbabilityPercent({
 
   return (
     <span className={`transition-colors duration-700 ${colorClass} ${className}`.trim()}>
-      {value}%
+      {formatProbabilityPercentDisplay(value)}%
     </span>
   );
 }
