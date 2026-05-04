@@ -131,21 +131,6 @@ export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps):
             )}
           </button>
           <button
-            onClick={() => onActiveTabChange("pending")}
-            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
-              activeTab === "pending"
-                ? "!cursor-default bg-bg3 text-foreground shadow-sm"
-                : "text-muted hover:text-foreground-secondary"
-            }`}
-          >
-            Pending resolve
-            {pendingResolveMarkets.length > 0 && (
-              <span className={`ml-1.5 text-xs ${activeTab === "pending" ? "text-foreground-secondary" : "text-muted"}`}>
-                {pendingResolveMarkets.length}
-              </span>
-            )}
-          </button>
-          <button
             onClick={() => onActiveTabChange("past")}
             className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               activeTab === "past"
