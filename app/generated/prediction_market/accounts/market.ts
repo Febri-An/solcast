@@ -29,6 +29,8 @@ import {
   getOptionEncoder,
   getStructDecoder,
   getStructEncoder,
+  getU16Decoder,
+  getU16Encoder,
   getU32Decoder,
   getU32Encoder,
   getU64Decoder,
@@ -63,44 +65,70 @@ export function getMarketDiscriminatorBytes() {
 
 export type Market = {
   discriminator: ReadonlyUint8Array;
-  /** Creator who can resolve the market */
   creator: Address;
-  /** Unique market ID (per creator) */
   marketId: bigint;
-  /** The prediction question */
   question: string;
-  /** Unix timestamp when betting closes and resolution can occur */
   resolutionTime: bigint;
-  /** Total lamports bet on YES */
-  yesPool: bigint;
-  /** Total lamports bet on NO */
-  noPool: bigint;
-  /** Whether the market has been resolved */
+  /** Pyth price feed identifier (e.g. BTC/USD, SOL/USD) */
+  feedId: ReadonlyUint8Array;
+  /**
+   * Strike in USD: either whole dollars (`target_price_encoding == 0`, e.g. 79000 = $79,000)
+   * or nanodollars (`target_price_encoding == 1`, e.g. 79_000_000_000_000 = $79,000.000).
+   */
+  targetPrice: bigint;
+  /** YES shares currently held by the AMM pool. */
+  yesShares: bigint;
+  /** NO shares currently held by the AMM pool. */
+  noShares: bigint;
+  /** Sum of `yes_shares` across all `UserPosition`s. Used for solvency checks. */
+  yesSupplyUser: bigint;
+  /** Sum of `no_shares` across all `UserPosition`s. */
+  noSupplyUser: bigint;
+  /** Swap fee in basis points (1 bp = 0.01%). `200` = 2%. */
+  feeBps: number;
+  /** Admin's initial SOL deposit (== starting `yes_shares` == starting `no_shares`). */
+  initialLiquidity: bigint;
+  /** Set once the admin has claimed the LP side of the pool after resolve. */
+  liquidityWithdrawn: boolean;
   resolved: boolean;
-  /** The winning outcome (None until resolved, Some(true) = YES won) */
+  /** `Some(true)` = YES won, `Some(false)` = NO won. */
   outcome: Option<boolean>;
-  /** PDA bump seed */
+  /** `0` = `target_price` is whole USD. `1` = `target_price` is USD × 1e9 (9 decimal places). */
+  targetPriceEncoding: number;
   bump: number;
 };
 
 export type MarketArgs = {
-  /** Creator who can resolve the market */
   creator: Address;
-  /** Unique market ID (per creator) */
   marketId: number | bigint;
-  /** The prediction question */
   question: string;
-  /** Unix timestamp when betting closes and resolution can occur */
   resolutionTime: number | bigint;
-  /** Total lamports bet on YES */
-  yesPool: number | bigint;
-  /** Total lamports bet on NO */
-  noPool: number | bigint;
-  /** Whether the market has been resolved */
+  /** Pyth price feed identifier (e.g. BTC/USD, SOL/USD) */
+  feedId: ReadonlyUint8Array;
+  /**
+   * Strike in USD: either whole dollars (`target_price_encoding == 0`, e.g. 79000 = $79,000)
+   * or nanodollars (`target_price_encoding == 1`, e.g. 79_000_000_000_000 = $79,000.000).
+   */
+  targetPrice: number | bigint;
+  /** YES shares currently held by the AMM pool. */
+  yesShares: number | bigint;
+  /** NO shares currently held by the AMM pool. */
+  noShares: number | bigint;
+  /** Sum of `yes_shares` across all `UserPosition`s. Used for solvency checks. */
+  yesSupplyUser: number | bigint;
+  /** Sum of `no_shares` across all `UserPosition`s. */
+  noSupplyUser: number | bigint;
+  /** Swap fee in basis points (1 bp = 0.01%). `200` = 2%. */
+  feeBps: number;
+  /** Admin's initial SOL deposit (== starting `yes_shares` == starting `no_shares`). */
+  initialLiquidity: number | bigint;
+  /** Set once the admin has claimed the LP side of the pool after resolve. */
+  liquidityWithdrawn: boolean;
   resolved: boolean;
-  /** The winning outcome (None until resolved, Some(true) = YES won) */
+  /** `Some(true)` = YES won, `Some(false)` = NO won. */
   outcome: OptionOrNullable<boolean>;
-  /** PDA bump seed */
+  /** `0` = `target_price` is whole USD. `1` = `target_price` is USD × 1e9 (9 decimal places). */
+  targetPriceEncoding: number;
   bump: number;
 };
 
@@ -113,10 +141,18 @@ export function getMarketEncoder(): Encoder<MarketArgs> {
       ["marketId", getU64Encoder()],
       ["question", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
       ["resolutionTime", getI64Encoder()],
-      ["yesPool", getU64Encoder()],
-      ["noPool", getU64Encoder()],
+      ["feedId", fixEncoderSize(getBytesEncoder(), 32)],
+      ["targetPrice", getI64Encoder()],
+      ["yesShares", getU64Encoder()],
+      ["noShares", getU64Encoder()],
+      ["yesSupplyUser", getU64Encoder()],
+      ["noSupplyUser", getU64Encoder()],
+      ["feeBps", getU16Encoder()],
+      ["initialLiquidity", getU64Encoder()],
+      ["liquidityWithdrawn", getBooleanEncoder()],
       ["resolved", getBooleanEncoder()],
       ["outcome", getOptionEncoder(getBooleanEncoder())],
+      ["targetPriceEncoding", getU8Encoder()],
       ["bump", getU8Encoder()],
     ]),
     (value) => ({ ...value, discriminator: MARKET_DISCRIMINATOR }),
@@ -131,10 +167,18 @@ export function getMarketDecoder(): Decoder<Market> {
     ["marketId", getU64Decoder()],
     ["question", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
     ["resolutionTime", getI64Decoder()],
-    ["yesPool", getU64Decoder()],
-    ["noPool", getU64Decoder()],
+    ["feedId", fixDecoderSize(getBytesDecoder(), 32)],
+    ["targetPrice", getI64Decoder()],
+    ["yesShares", getU64Decoder()],
+    ["noShares", getU64Decoder()],
+    ["yesSupplyUser", getU64Decoder()],
+    ["noSupplyUser", getU64Decoder()],
+    ["feeBps", getU16Decoder()],
+    ["initialLiquidity", getU64Decoder()],
+    ["liquidityWithdrawn", getBooleanDecoder()],
     ["resolved", getBooleanDecoder()],
     ["outcome", getOptionDecoder(getBooleanDecoder())],
+    ["targetPriceEncoding", getU8Decoder()],
     ["bump", getU8Decoder()],
   ]);
 }

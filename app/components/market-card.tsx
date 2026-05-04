@@ -1,395 +1,577 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 
-import {
-  type Address,
-  type Option,
-  getAddressEncoder,
-  getBytesEncoder,
-  getProgramDerivedAddress,
-  isSome,
-} from "@solana/kit";
-import { useSendTransaction, useWalletConnection } from "@solana/react-hooks";
+import Image from "next/image";
+import Link from "next/link";
 
-import {
-  getClaimWinningsInstructionAsync,
-  getPlaceBetInstructionAsync,
-  type Market,
-  PREDICTION_MARKET_PROGRAM_ADDRESS,
-} from "../generated/prediction_market";
-import { resolveMarketWithPyth } from "../lib/pyth";
-import { createAnchorWallet, getWeb3Connection } from "../lib/solana-compat";
-import {
-  getUserPositionDecoder,
-  type UserPosition,
-} from "../generated/prediction_market/accounts/userPosition";
+import { type Address, type Option, isSome } from "@solana/kit";
+import { useWalletConnection } from "@solana/react-hooks";
 
-const LAMPORTS_PER_SOL = 1_000_000_000n;
-const DEVNET_RPC_URL = "https://api.devnet.solana.com";
-const POSITION_SEED = new Uint8Array([112, 111, 115, 105, 116, 105, 111, 110]); // "position"
-const POLL_INTERVAL_MS = 3000;
-const STATUS_CLEAR_DELAY_MS = 3000;
+import { type Market } from "../generated/prediction_market";
+import { useMarketTrading } from "../hooks/use-market-trading";
+import { useProfile } from "../hooks/use-profile";
+import { useProbabilityFlash } from "../hooks/use-probability-flash";
+import {
+  resolutionCountdownTextClassName,
+  useResolutionCountdown,
+} from "../hooks/use-resolution-countdown";
+import { formatSol, formatVolume, isShortLiveWindowMarket } from "../lib/market-format";
+import { getAssetBrandName, getAssetIconSrc } from "../lib/price-feeds";
+import { ProbabilityPercent } from "./probability-percent";
+import { useToast } from "./toast";
 
 interface MarketCardProps {
   market: Market;
   marketAddress: Address;
   onUpdate?: () => void;
-}
-
-function formatSol(lamports: bigint): string {
-  const sol = Number(lamports) / Number(LAMPORTS_PER_SOL);
-  if (sol < 0.01) return sol.toFixed(4);
-  return sol.toFixed(2);
-}
-
-function getTimeRemaining(resolutionTime: number): string {
-  const now = Date.now() / 1000;
-  const diff = resolutionTime - now;
-  if (diff <= 0) return "Ended";
-  if (diff < 60) return `${Math.floor(diff)}s left`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m left`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h left`;
-  return `${Math.floor(diff / 86400)}d left`;
+  /** Multi-column grid on home (tab Active); tighter card layout. */
+  density?: "grid" | "list";
+  className?: string;
 }
 
 function unwrapOutcome(option: Option<boolean>): boolean | null {
   return isSome(option) ? option.value : null;
 }
 
-function getStatusBadgeClass(isResolved: boolean, outcome: Option<boolean>, canBet: boolean): string {
-  if (isResolved) {
-    const val = unwrapOutcome(outcome);
-    return val ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700";
-  }
-  if (canBet) {
-    return "bg-emerald-100 text-emerald-700";
-  }
-  return "bg-amber-100 text-amber-700";
-}
+const TRADE_HASH = "#market-trade";
 
-function getStatusBadgeText(
-  isResolved: boolean,
-  outcome: Option<boolean>,
-  canBet: boolean,
-  resolutionTime: number
-): string {
-  if (isResolved) {
-    const val = unwrapOutcome(outcome);
-    return val ? "YES" : "NO";
-  }
-  if (canBet) {
-    return getTimeRemaining(resolutionTime);
-  }
-  return "Pending";
-}
+function SentimentRing({ percent, compact }: { percent: number; compact?: boolean }): ReactNode {
+  const value = Math.min(100, Math.max(0, percent));
+  const flash = useProbabilityFlash(value);
+  const width = compact ? 68 : 92;
+  const height = compact ? 44 : 58;
+  const cx = width / 2;
+  const cy = height - (compact ? 4 : 5);
+  const r = compact ? 26 : 35;
+  const arcPath = `M${cx - r},${cy} A${r},${r} 0 0,1 ${cx + r},${cy}`;
+  const arcLength = Math.PI * r;
+  const activeArc = (value / 100) * arcLength;
+  const needleLength = compact ? 20 : 27;
+  const angle = Math.PI + (value / 100) * Math.PI;
+  const needleX = cx + needleLength * Math.cos(angle);
+  const needleY = cy + needleLength * Math.sin(angle);
 
-async function fetchUserPositionFromRpc(
-  marketAddress: Address,
-  walletAddress: Address
-): Promise<UserPosition | null> {
-  const positionAddress = await getProgramDerivedAddress({
-    programAddress: PREDICTION_MARKET_PROGRAM_ADDRESS,
-    seeds: [
-      getBytesEncoder().encode(POSITION_SEED),
-      getAddressEncoder().encode(marketAddress),
-      getAddressEncoder().encode(walletAddress),
-    ],
-  });
+  const getSentiment = (v: number): { text: string; colorClass: string } => {
+    if (v < 15) return { text: "Strong No", colorClass: "text-red-text" };
+    if (v < 35) return { text: "Likely No", colorClass: "text-red-text" };
+    if (v < 45) return { text: "Leaning No", colorClass: "text-amber" };
+    if (v < 55) return { text: "Uncertain", colorClass: "text-amber" };
+    if (v < 65) return { text: "Leaning Yes", colorClass: "text-green-text" };
+    if (v < 85) return { text: "Likely Yes", colorClass: "text-green-text" };
+    return { text: "Strong Yes", colorClass: "text-green-text" };
+  };
 
-  const response = await fetch(DEVNET_RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "getAccountInfo",
-      params: [positionAddress[0], { encoding: "base64", commitment: "confirmed" }],
-    }),
-  });
+  const sentiment = getSentiment(value);
 
-  const result = await response.json();
-
-  if (!result.result?.value) {
-    return null;
-  }
-
-  const data = Uint8Array.from(atob(result.result.value.data[0]), (c) => c.charCodeAt(0));
-  return getUserPositionDecoder().decode(data);
-}
-
-interface ClaimSectionProps {
-  status: string;
-  isResolved: boolean;
-  userPosition: UserPosition | null;
-  market: Market;
-  isSending: boolean;
-  onClaim: () => void;
-}
-
-function ClaimSection({
-  status,
-  isResolved,
-  userPosition,
-  market,
-  isSending,
-  onClaim,
-}: ClaimSectionProps): ReactNode {
-  if (status !== "connected" || !isResolved || !userPosition || userPosition.claimed) {
-    return null;
-  }
-
-  const outcome = unwrapOutcome(market.outcome);
-  if (outcome === null) {
-    return null;
-  }
-
-  const userWinningBet = outcome ? userPosition.yesAmount : userPosition.noAmount;
-  if (userWinningBet === 0n) {
-    return null;
-  }
-
-  const winningPool = outcome ? market.yesPool : market.noPool;
-  const losingPool = outcome ? market.noPool : market.yesPool;
-  const winnings = winningPool > 0n ? (userWinningBet * losingPool) / winningPool : 0n;
-  const totalPayout = userWinningBet + winnings;
+  const pctColorClass =
+    flash === "up"
+      ? "text-green-400"
+      : flash === "down"
+        ? "text-red-400"
+        : "text-foreground";
 
   return (
-    <div className="border-t border-border-low p-3 bg-green-50">
-      <button
-        onClick={onClaim}
-        disabled={isSending}
-        className="w-full rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-green-700 disabled:opacity-40"
+    <div
+      className={`relative flex shrink-0 flex-col items-center justify-center ${
+        compact ? "h-[64px] w-[68px]" : "h-[82px] w-[92px]"
+      }`}
+    >
+      <span
+        className={`relative z-[1] font-semibold leading-none ${
+          compact ? "-mb-1 text-[9px]" : "mb-1 text-[10px]"
+        } ${sentiment.colorClass}`}
       >
-        {isSending ? "Claiming..." : `Claim ${formatSol(totalPayout)} SOL`}
-      </button>
+        {sentiment.text}
+      </span>
+ 
+
+      <svg className="relative z-[1]" viewBox={`0 0 ${width} ${height}`} aria-hidden>
+        <defs>
+          <linearGradient id={`sentiment-gauge-${compact ? "compact" : "default"}`} x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#E24B4A" />
+            <stop offset="50%" stopColor="#EF9F27" />
+            <stop offset="100%" stopColor="#639922" />
+          </linearGradient>
+        </defs>
+
+        <path
+          d={arcPath}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={compact ? 5 : 6}
+          strokeLinecap="round"
+          className="text-bg3"
+        />
+        <path
+          d={arcPath}
+          fill="none"
+          stroke={`url(#sentiment-gauge-${compact ? "compact" : "default"})`}
+          strokeWidth={compact ? 5 : 6}
+          strokeLinecap="round"
+          opacity="0.25"
+        />
+        <path
+          d={arcPath}
+          fill="none"
+          stroke={`url(#sentiment-gauge-${compact ? "compact" : "default"})`}
+          strokeWidth={compact ? 5 : 6}
+          strokeLinecap="round"
+          strokeDasharray={`${activeArc} ${arcLength}`}
+        />
+
+        <line
+          x1={cx}
+          y1={cy}
+          x2={needleX + 0.8}
+          y2={needleY + 0.8}
+          stroke="rgba(0,0,0,0.12)"
+          strokeWidth={compact ? 1.8 : 2}
+          strokeLinecap="round"
+        />
+        <line
+          x1={cx}
+          y1={cy}
+          x2={needleX}
+          y2={needleY}
+          stroke="currentColor"
+          strokeWidth={compact ? 1.3 : 1.6}
+          strokeLinecap="round"
+          className="text-foreground"
+        />
+        <circle cx={cx} cy={cy} r={compact ? 3.8 : 5} fill="currentColor" className="text-bg2" />
+        <circle cx={cx} cy={cy} r={compact ? 1.6 : 2} fill="currentColor" className="text-muted" />
+      </svg>
+
+      <span
+        className={`relative z-[1] font-bold font-mono leading-none transition-colors duration-700 ${pctColorClass} ${
+          compact ? "mt-0.5 text-[10px]" : "mt-1 text-[12px]"
+        }`}
+      >
+        {value}%
+      </span>
     </div>
   );
 }
 
-export function MarketCard({ market, marketAddress, onUpdate }: MarketCardProps): ReactNode {
-  const { wallet, status } = useWalletConnection();
-  const { send, isSending } = useSendTransaction();
+const ASSET_ICON_INNER_ZOOM = 1.24;
 
-  const [betAmount, setBetAmount] = useState("");
-  const [txStatus, setTxStatus] = useState<string | null>(null);
-  const [userPosition, setUserPosition] = useState<UserPosition | null>(null);
-  const [isResolving, setIsResolving] = useState(false);
+function AssetIcon({ feedId }: { feedId: Market["feedId"]; compact?: boolean }): ReactNode {
+  const iconSrc = getAssetIconSrc(feedId);
+  const brand = getAssetBrandName(feedId);
+  const size = 40;
+  const box = "h-10 w-10";
+  const frame = `relative flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-border-low bg-bg3 shadow-inner ${box}`;
 
-  const walletAddress = wallet?.account.address;
-
-  useEffect(() => {
-    async function fetchPosition(): Promise<void> {
-      if (!walletAddress) {
-        setUserPosition(null);
-        return;
-      }
-
-      try {
-        const position = await fetchUserPositionFromRpc(marketAddress, walletAddress);
-        setUserPosition(position);
-      } catch (err) {
-        console.warn("Failed to fetch user position:", err);
-        setUserPosition(null);
-      }
-    }
-
-    fetchPosition();
-    const interval = setInterval(fetchPosition, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [walletAddress, marketAddress]);
-  const isCreator = walletAddress?.toString() === market.creator.toString();
-  const isResolved = market.resolved;
-  const now = Date.now() / 1000;
-  const resolutionTime = Number(market.resolutionTime);
-  const canBet = !isResolved && now < resolutionTime;
-  const canResolve = !isResolved && now >= resolutionTime && isCreator;
-
-  const totalPool = market.yesPool + market.noPool;
-  const yesPercent = totalPool > 0n ? Number((market.yesPool * 100n) / totalPool) : 50;
-
-  const handlePlaceBet = useCallback(async (betYes: boolean) => {
-    if (!wallet || !walletAddress || !betAmount) return;
-
-    try {
-      setTxStatus("Building transaction...");
-      const amount = BigInt(Math.floor(parseFloat(betAmount) * Number(LAMPORTS_PER_SOL)));
-
-      const instruction = await getPlaceBetInstructionAsync({
-        user: wallet.account,
-        market: marketAddress,
-        amount,
-        betYes,
-      });
-
-      setTxStatus("Awaiting signature...");
-      const signature = await send({ instructions: [instruction] });
-
-      setTxStatus(`Done! ${signature?.slice(0, 8)}...`);
-      setBetAmount("");
-      setTimeout(() => setTxStatus(null), STATUS_CLEAR_DELAY_MS);
-      onUpdate?.();
-    } catch (err) {
-      console.error("Place bet failed:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setTxStatus(`Error: ${message}`);
-    }
-  }, [wallet, walletAddress, marketAddress, betAmount, send, onUpdate]);
-
-  const handleResolve = useCallback(async (outcome: boolean) => {
-    if (!wallet || !walletAddress) return;
-
-    try {
-      setIsResolving(true);
-      setTxStatus("Fetching Pyth price data...");
-
-      const connection = getWeb3Connection();
-      const anchorWallet = createAnchorWallet(wallet);
-
-      setTxStatus("Posting price update & resolving...");
-      const signatures = await resolveMarketWithPyth(
-        connection,
-        anchorWallet,
-        marketAddress,
-        outcome,
-      );
-
-      const lastSig = signatures[signatures.length - 1];
-      setTxStatus(`Resolved! ${lastSig?.slice(0, 8)}...`);
-      setTimeout(() => setTxStatus(null), STATUS_CLEAR_DELAY_MS);
-      onUpdate?.();
-    } catch (err) {
-      console.error("Resolve failed:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setTxStatus(`Error: ${message}`);
-    } finally {
-      setIsResolving(false);
-    }
-  }, [wallet, walletAddress, marketAddress, onUpdate]);
-
-  const handleClaim = useCallback(async () => {
-    if (!wallet || !walletAddress) return;
-
-    try {
-      setTxStatus("Claiming...");
-
-      const instruction = await getClaimWinningsInstructionAsync({
-        user: wallet.account,
-        market: marketAddress,
-      });
-
-      const signature = await send({ instructions: [instruction] });
-      setTxStatus(`Claimed! ${signature?.slice(0, 8)}...`);
-      setTimeout(() => setTxStatus(null), STATUS_CLEAR_DELAY_MS);
-      onUpdate?.();
-    } catch (err) {
-      console.error("Claim failed:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setTxStatus(`Error: ${message}`);
-    }
-  }, [wallet, walletAddress, marketAddress, send, onUpdate]);
-
-  const badgeClass = getStatusBadgeClass(isResolved, market.outcome, canBet);
-  const badgeText = getStatusBadgeText(isResolved, market.outcome, canBet, resolutionTime);
+  if (iconSrc) {
+    return (
+      <div className={frame}>
+        <Image
+          src={iconSrc}
+          alt={brand}
+          fill
+          sizes={`${size}px`}
+          className="object-cover object-center"
+          style={{ transform: `scale(${ASSET_ICON_INNER_ZOOM})` }}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="rounded-xl border border-border-low bg-card overflow-hidden">
-      <div className="p-4 pb-3">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <h3 className="font-medium leading-snug">{market.question}</h3>
-          <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${badgeClass}`}>
-            {badgeText}
-          </span>
+    <div className={`${frame} font-bold text-foreground-secondary`} aria-hidden>
+      ◈
+    </div>
+  );
+}
+
+export function MarketCard({
+  market,
+  marketAddress,
+  onUpdate,
+  density = "list",
+  className,
+}: MarketCardProps): ReactNode {
+  const { status } = useWalletConnection();
+  const { openProfileModal, configured: profileConfigured } = useProfile();
+  const { showToast } = useToast();
+  const [bookmarked, setBookmarked] = useState(false);
+
+  const handleRedeemSuccess = useCallback(() => {
+    showToast("Winnings redeemed successfully.");
+  }, [showToast]);
+
+  const {
+    isSending,
+    txStatus,
+    isResolving,
+    isResolved,
+    resolutionTime,
+    canTrade: canTradeMarket,
+    canResolve,
+    totalShares,
+    yesPercent,
+    noPercent,
+    handleResolve,
+    handleRedeem,
+    canRedeem,
+    redeemPayout,
+    isProfileComplete,
+  } = useMarketTrading(market, marketAddress, onUpdate, {
+    onRedeemSuccess: handleRedeemSuccess,
+  });
+
+  const canTrade =
+    canTradeMarket && status === "connected" && (!profileConfigured || isProfileComplete);
+  const marketHref = `/market/${marketAddress}${TRADE_HASH}`;
+
+  const brandName = getAssetBrandName(market.feedId);
+
+  const showUpDownCard = !isResolved && canTradeMarket;
+  const isGrid = density === "grid";
+  const shortLiveWindow = isShortLiveWindowMarket(market);
+
+  const { label: countdownLabel, urgency: countdownUrgency } = useResolutionCountdown(
+    resolutionTime,
+    showUpDownCard,
+  );
+
+  if (showUpDownCard) {
+    return (
+      <div
+        className={`relative flex h-full flex-col rounded-2xl border border-border-low bg-bg2 shadow-sm transition-colors hover:border-border-strong/80 ${
+          isGrid ? "p-3" : "p-4"
+        } ${className ?? ""}`}
+      >
+        <Link
+          href={`/market/${marketAddress}`}
+          className="absolute inset-0 z-0 rounded-2xl"
+          aria-label={`Open market: ${market.question}`}
+        />
+
+        {/* Header */}
+        <div className={`relative z-[1] flex gap-2 sm:gap-3 pointer-events-none ${isGrid ? "mb-5" : "mb-4"}`}>
+          <AssetIcon feedId={market.feedId} compact={isGrid} />
+          <div className="min-w-0 flex-1 pt-0.5">
+            <h3
+              className={`font-semibold leading-snug text-foreground line-clamp-2 ${
+                isGrid ? "text-[15px]" : "text-[15px]"
+              }`}
+            >
+              {market.question}
+            </h3>
+            {/* 2m/5m: no subtitle; LIVE in footer. Longer: time left here; vol in footer. */}
+            {!shortLiveWindow && (
+              <p className={`mt-1 ${isGrid ? "text-[10px] leading-tight" : "text-xs"}`}>
+                {countdownLabel === "Ended" ? (
+                  <span className="text-muted">Trading ended</span>
+                ) : (
+                  <>
+                    <span className={resolutionCountdownTextClassName(countdownUrgency)}>
+                      {countdownLabel}
+                    </span>
+                    <span className="text-muted"> left</span>
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+          <SentimentRing percent={yesPercent} compact={isGrid} />
         </div>
 
-        {/* Probability Bar */}
-        <div className="mb-2">
-          <div className="h-2 rounded-full overflow-hidden bg-red-200 flex">
+        {/* Up / Down — maps to Yes / No on-chain */}
+        <div className={`relative z-10 grid grid-cols-2 gap-1.5 sm:gap-2 pointer-events-auto ${isGrid ? "mb-3" : "mb-4"}`}>
+          <Link
+            href={marketHref}
+            onClick={(e) => e.stopPropagation()}
+            className={`flex flex-col items-center justify-center rounded-sm bg-green-muted/90 px-2 transition hover:bg-green/20 ${
+              isGrid ? "min-h-[35px]" : "min-h-[88px]"
+            }`}
+          >
+            <span className={`font-bold text-green-text ${isGrid ? "text-base" : "text-lg"}`}>Up</span>
+          </Link>
+
+          <Link
+            href={marketHref}
+            onClick={(e) => e.stopPropagation()}
+            className={`flex flex-col items-center justify-center rounded-sm bg-red-muted/90 transition hover:bg-red/20 px-2 ${
+              isGrid ? "min-h-[35px]" : "min-h-[88px] px-3"
+            }`}
+          >
+            <span className={`font-bold text-red-text ${isGrid ? "text-base" : "text-lg"}`}>Down</span>
+          </Link>
+        </div>
+
+        {/* Footer */}
+        <div className="relative z-10 mt-auto flex items-center justify-between gap-1 pointer-events-auto">
+          <div className={`flex min-w-0 items-center gap-1.5 ${isGrid ? "text-[10px]" : "text-xs"}`}>
+            {shortLiveWindow ? (
+              <>
+                <span
+                  className={`flex shrink-0 items-center gap-1 rounded-md bg-red/10 font-semibold uppercase tracking-wide text-red-text ${
+                    isGrid ? "px-1.5 py-0.5 text-[9px]" : "gap-1.5 px-2 py-0.5"
+                  }`}
+                >
+                  <span className="relative flex h-1.5 w-1.5 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red opacity-40" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red" />
+                  </span>
+                  Live
+                </span>
+                <span className="text-border-strong">·</span>
+                <span
+                  className={`shrink-0 ${resolutionCountdownTextClassName(countdownUrgency)} ${
+                    isGrid ? "text-[9px]" : "text-[10px]"
+                  }`}
+                >
+                  {countdownLabel === "Ended" ? "Over" : countdownLabel}
+                </span>
+                <span className="truncate text-muted">{brandName}</span>
+              </>
+            ) : (
+              <>
+                <span className="shrink-0 font-mono font-medium text-foreground-secondary">
+                  {formatVolume(totalShares)} vol
+                </span>
+                <span className="text-border-strong">·</span>
+                <span className="truncate text-muted">{brandName}</span>
+              </>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
+            {canTradeMarket && status === "connected" && profileConfigured && !isProfileComplete && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  openProfileModal("username");
+                }}
+                className="rounded-md border border-amber/30 bg-amber-muted px-2 py-1 text-[10px] font-semibold text-amber"
+              >
+                Username
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setBookmarked((v) => !v);
+              }}
+              className={`rounded-lg text-muted transition hover:bg-bg3 hover:text-foreground-secondary ${
+                isGrid ? "p-1" : "p-1.5"
+              }`}
+              aria-label={bookmarked ? "Remove bookmark" : "Bookmark market"}
+            >
+              <svg
+                className={isGrid ? "h-4 w-4" : "h-5 w-5"}
+                fill={bookmarked ? "currentColor" : "none"}
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {txStatus && (
+          <div className={`relative z-10 border-t border-border-low ${isGrid ? "mt-2 pt-2" : "mt-3 pt-3"}`}>
+            <p className={`text-muted font-mono ${isGrid ? "text-[10px]" : "text-xs"}`}>{txStatus}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ——— Compact row: pending resolve or resolved ——— */
+  const rowInGrid = isGrid;
+  const isPendingResolveGrid = rowInGrid && !isResolved && !canTradeMarket;
+  return (
+    <div
+      className={
+        rowInGrid
+          ? `group rounded-2xl border border-border-low bg-bg2 transition-colors hover:border-border-strong/60 ${className ?? ""}`
+          : `group border-b border-border-low last:border-b-0 transition-colors hover:bg-bg2/60 ${className ?? ""}`
+      }
+    >
+      <div
+        className={`relative flex items-center gap-4 ${
+          rowInGrid ? (isPendingResolveGrid ? "px-4 py-4" : "px-4 py-3") : "px-4 py-3.5 sm:px-5"
+        }`}
+      >
+        <Link
+          href={`/market/${marketAddress}`}
+          className="absolute inset-0 z-0 rounded-none"
+          aria-label={`Open market: ${market.question}`}
+        />
+
+        <div className="relative z-[1] flex-1 min-w-0 pointer-events-none">
+          <div className="flex items-center pb-2 gap-2.5 mb-0.5">
+            <h3
+              className={`text-[15px] font-medium leading-snug text-foreground ${
+                isPendingResolveGrid
+                  ? "line-clamp-3 min-h-[3.875rem] break-words"
+                  : "truncate"
+              }`}
+            >
+              {market.question}
+            </h3>
+            {isResolved && (
+              <span
+                className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                  unwrapOutcome(market.outcome)
+                    ? "bg-green-muted text-green-text"
+                    : "bg-red-muted text-red-text"
+                }`}
+              >
+                {unwrapOutcome(market.outcome) ? "Yes" : "No"}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted">
+            <span className="flex items-center gap-1">
+              {formatVolume(totalShares)} SOL vol.
+            </span>
+          </div>
+        </div>
+
+        {/* <div className="relative z-[1] hidden sm:flex items-center gap-2 shrink-0 pointer-events-none">
+          <div className="w-24 h-1.5 rounded-full bg-bg3 overflow-hidden flex">
             <div
-              className="bg-green-500 transition-all duration-300"
+              className="bg-green transition-all duration-500"
               style={{ width: `${yesPercent}%` }}
             />
           </div>
-          <div className="flex justify-between mt-1.5 text-xs">
-            <span className="text-green-600 font-medium">{yesPercent}% Yes</span>
-            <span className="text-red-600 font-medium">{100 - yesPercent}% No</span>
-          </div>
-        </div>
+          <span className="text-xs text-muted font-mono w-8 text-right">{yesPercent}%</span>
+        </div> */}
 
-        {/* Pool Info */}
-        <div className="flex items-center gap-4 text-xs text-muted">
-          <span>{formatSol(totalPool)} SOL pool</span>
-          {isCreator && <span className="text-blue-600">You created this</span>}
+        <div className="relative z-10 flex items-center gap-2 shrink-0 pointer-events-auto">
+          {canTrade && (
+            <>
+              <Link
+                href={marketHref}
+                onClick={(e) => e.stopPropagation()}
+                className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20"
+              >
+                Yes{" "}
+                <ProbabilityPercent value={yesPercent} variant="yes" className="inline font-semibold" />
+              </Link>
+              <Link
+                href={marketHref}
+                onClick={(e) => e.stopPropagation()}
+                className="rounded-lg bg-red-muted text-red-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red/20"
+              >
+                No{" "}
+                <ProbabilityPercent value={noPercent} variant="no" className="inline font-semibold" />
+              </Link>
+            </>
+          )}
+
+          {canTradeMarket && status === "connected" && profileConfigured && !isProfileComplete && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openProfileModal("username");
+              }}
+              className="rounded-lg border border-amber/30 bg-amber-muted px-3 py-1.5 text-xs font-semibold text-amber"
+            >
+              Set username
+            </button>
+          )}
+
+          {canTradeMarket && status !== "connected" && (
+            <>
+              <Link
+                href={marketHref}
+                onClick={(e) => e.stopPropagation()}
+                className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20"
+              >
+                Yes{" "}
+                <ProbabilityPercent value={yesPercent} variant="yes" className="inline font-semibold" />
+              </Link>
+              <Link
+                href={marketHref}
+                onClick={(e) => e.stopPropagation()}
+                className="rounded-lg bg-red-muted text-red-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red/20"
+              >
+                No{" "}
+                <ProbabilityPercent value={noPercent} variant="no" className="inline font-semibold" />
+              </Link>
+            </>
+          )}
+
+          {canResolve && status === "connected" && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleResolve();
+              }}
+              disabled={isSending || isResolving}
+              className="rounded-lg bg-amber-muted text-amber px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-amber/20 disabled:opacity-40"
+            >
+              {isResolving ? "Resolving..." : "Resolve"}
+            </button>
+          )}
+
+          {canResolve && status !== "connected" && (
+            <span className="rounded-lg bg-amber-muted text-amber px-4 py-1.5 text-sm font-semibold">
+              Pending
+            </span>
+          )}
+
+          {isResolved && canRedeem && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleRedeem();
+              }}
+              disabled={isSending}
+              className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20 disabled:opacity-40"
+            >
+              {isSending ? "Claiming..." : `Claim ${formatSol(redeemPayout)}`}
+            </button>
+          )}
+
+          {isResolved && !canRedeem && !canResolve && (
+            <span
+              className={`rounded-lg px-4 py-1.5 text-sm font-semibold ${
+                unwrapOutcome(market.outcome)
+                  ? "bg-green-muted text-green-text"
+                  : "bg-red-muted text-red-text"
+              }`}
+            >
+              {unwrapOutcome(market.outcome) ? (
+                <>
+                  Yes{" "}
+                  <ProbabilityPercent value={yesPercent} variant="yes" className="inline" />
+                </>
+              ) : (
+                <>
+                  No{" "}
+                  <ProbabilityPercent value={noPercent} variant="no" className="inline" />
+                </>
+              )}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Actions */}
-      {status === "connected" && canBet && (
-        <div className="border-t border-border-low p-3 bg-cream/30">
-          <div className="flex gap-2">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="SOL"
-              value={betAmount}
-              onChange={(e) => setBetAmount(e.target.value)}
-              disabled={isSending}
-              className="w-20 rounded-md border border-border-low bg-card px-2 py-1.5 text-sm outline-none placeholder:text-muted focus:border-foreground/30 disabled:opacity-60"
-            />
-            <button
-              onClick={() => handlePlaceBet(true)}
-              disabled={isSending || !betAmount || parseFloat(betAmount) <= 0}
-              className="flex-1 rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-green-700 disabled:opacity-40"
-            >
-              Bet Yes
-            </button>
-            <button
-              onClick={() => handlePlaceBet(false)}
-              disabled={isSending || !betAmount || parseFloat(betAmount) <= 0}
-              className="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-40"
-            >
-              Bet No
-            </button>
-          </div>
-        </div>
-      )}
-
-      {status === "connected" && canResolve && (
-        <div className="border-t border-border-low p-3 bg-amber-50">
-          <p className="text-xs text-amber-700 mb-2">You can now resolve this market</p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleResolve(true)}
-              disabled={isSending || isResolving}
-              className="flex-1 rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-green-700 disabled:opacity-40"
-            >
-              {isResolving ? "Resolving..." : "Yes Won"}
-            </button>
-            <button
-              onClick={() => handleResolve(false)}
-              disabled={isSending || isResolving}
-              className="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-40"
-            >
-              {isResolving ? "Resolving..." : "No Won"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <ClaimSection
-        status={status}
-        isResolved={isResolved}
-        userPosition={userPosition}
-        market={market}
-        isSending={isSending}
-        onClaim={handleClaim}
-      />
-
-      {/* Status Message */}
       {txStatus && (
-        <div className="border-t border-border-low px-3 py-2 text-xs text-muted bg-cream/50">
-          {txStatus}
+        <div className="relative z-10 px-4 pb-3 sm:px-5">
+          <p className="text-xs text-muted font-mono">{txStatus}</p>
         </div>
       )}
     </div>

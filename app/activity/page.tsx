@@ -7,37 +7,24 @@ import Link from "next/link";
 import { type Address } from "@solana/kit";
 import { useWalletConnection } from "@solana/react-hooks";
 
+import { BrandLogo } from "../components/brand-logo";
 import { PositionsList } from "../components/positions-list";
 import { WalletButton } from "../components/wallet-button";
 
-function WalletIcon(): ReactNode {
-  return (
-    <svg className="h-8 w-8 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3"
-      />
-    </svg>
-  );
-}
-
-function BackArrowIcon(): ReactNode {
-  return (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-    </svg>
-  );
-}
-
 function WalletNotConnected(): ReactNode {
   return (
-    <div className="flex flex-col items-center justify-center py-20">
-      <div className="mx-auto w-16 h-16 rounded-full bg-cream flex items-center justify-center mb-4">
-        <WalletIcon />
+    <div className="flex flex-col items-center justify-center py-24">
+      <div className="mx-auto w-16 h-16 rounded-2xl bg-bg3 border border-border-low flex items-center justify-center mb-5">
+        <svg className="h-8 w-8 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 013 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 013 6v3"
+          />
+        </svg>
       </div>
-      <h2 className="text-xl font-semibold mb-2">Connect your wallet</h2>
+      <h2 className="text-xl font-bold mb-2">Connect your wallet</h2>
       <p className="text-sm text-muted mb-6 text-center max-w-sm">
         Connect a Solana wallet to view your betting activity and positions
       </p>
@@ -53,18 +40,11 @@ interface ActivityContentProps {
 function ActivityContent({ walletAddress }: ActivityContentProps): ReactNode {
   return (
     <div>
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Your Activity</h2>
-          <p className="text-sm text-muted">Track your positions and performance</p>
+          <h2 className="text-xl font-bold tracking-tight">Your Portfolio</h2>
+          <p className="text-sm text-muted mt-0.5">Track your positions and performance</p>
         </div>
-        <Link
-          href="/"
-          className="flex items-center gap-2 text-sm text-muted hover:text-foreground transition"
-        >
-          <BackArrowIcon />
-          Back to Markets
-        </Link>
       </div>
       <PositionsList walletAddress={walletAddress} />
     </div>
@@ -77,30 +57,40 @@ export default function ActivityPage(): ReactNode {
 
   return (
     <div className="min-h-screen bg-bg1 text-foreground">
-      <header className="sticky top-0 z-50 border-b border-border-low bg-bg1/80 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground text-background font-bold text-sm">
-                PM
-              </div>
-              <div>
-                <h1 className="text-sm font-semibold">Prediction Markets</h1>
-                <p className="text-xs text-muted">Solana Devnet</p>
-              </div>
+      <nav className="sticky top-0 z-50 bg-bg1/80 backdrop-blur-xl">
+        <div className="absolute inset-x-0 bottom-0 h-px bg-border-low" />
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 lg:px-6">
+          <div className="flex items-center gap-6">
+            <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition">
+              <BrandLogo priority />
+              <span className="text-base font-bold tracking-tight text-foreground">
+                SolCast
+              </span>
             </Link>
+            <div className="hidden sm:flex items-center gap-1">
+              <Link
+                href="/"
+                className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground-secondary hover:bg-bg2"
+              >
+                Markets
+              </Link>
+              <span className="cursor-default rounded-lg px-3 py-1.5 text-sm font-medium text-foreground bg-bg3">
+                Portfolio
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-sm text-muted hover:text-foreground transition">
-              Markets
-            </Link>
-            <span className="text-sm font-medium">Activity</span>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-1.5 rounded-lg bg-bg2 border border-border-low px-2.5 py-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-green animate-pulse-glow" />
+              <span className="text-xs font-medium text-foreground-secondary">Devnet</span>
+            </div>
             <WalletButton />
           </div>
         </div>
-      </header>
+      </nav>
 
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
         {status !== "connected" ? (
           <WalletNotConnected />
         ) : (
@@ -108,40 +98,18 @@ export default function ActivityPage(): ReactNode {
         )}
       </main>
 
-      <footer className="border-t border-border-low mt-16">
-        <div className="mx-auto max-w-5xl px-4 py-6">
+      <footer className="mt-16 border-t border-border-low">
+        <div className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
           <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-muted">
-            <div className="flex items-center gap-2">
-              <span className="rounded bg-yellow-100 px-2 py-0.5 text-yellow-800 font-medium">
-                Devnet
-              </span>
-              <span>Built with Anchor + @solana/react-hooks</span>
+            <div className="flex items-center gap-3">
+              <BrandLogo />
+              <span>Built with Anchor + Pyth + @solana/react-hooks</span>
             </div>
-            <div className="flex gap-4">
-              <a
-                href="https://www.anchor-lang.com/docs"
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-foreground transition"
-              >
-                Anchor Docs
-              </a>
-              <a
-                href="https://solana.com/docs"
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-foreground transition"
-              >
-                Solana Docs
-              </a>
-              <a
-                href="https://faucet.solana.com/"
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-foreground transition"
-              >
-                Faucet
-              </a>
+            <div className="flex items-center gap-5">
+              <a href="https://www.anchor-lang.com/docs" target="_blank" rel="noreferrer" className="hover:text-foreground-secondary transition-colors">Anchor</a>
+              <a href="https://solana.com/docs" target="_blank" rel="noreferrer" className="hover:text-foreground-secondary transition-colors">Solana</a>
+              <a href="https://pyth.network/" target="_blank" rel="noreferrer" className="hover:text-foreground-secondary transition-colors">Pyth</a>
+              <a href="https://faucet.solana.com/" target="_blank" rel="noreferrer" className="hover:text-foreground-secondary transition-colors">Faucet</a>
             </div>
           </div>
         </div>

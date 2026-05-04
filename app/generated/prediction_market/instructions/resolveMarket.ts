@@ -10,8 +10,6 @@ import {
   combineCodec,
   fixDecoderSize,
   fixEncoderSize,
-  getBooleanDecoder,
-  getBooleanEncoder,
   getBytesDecoder,
   getBytesEncoder,
   getStructDecoder,
@@ -47,7 +45,7 @@ export function getResolveMarketDiscriminatorBytes() {
 
 export type ResolveMarketInstruction<
   TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
-  TAccountCreator extends string | AccountMeta<string> = string,
+  TAccountResolver extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
   TAccountPriceUpdate extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -55,10 +53,10 @@ export type ResolveMarketInstruction<
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountCreator extends string
-        ? ReadonlySignerAccount<TAccountCreator> &
-            AccountSignerMeta<TAccountCreator>
-        : TAccountCreator,
+      TAccountResolver extends string
+        ? ReadonlySignerAccount<TAccountResolver> &
+            AccountSignerMeta<TAccountResolver>
+        : TAccountResolver,
       TAccountMarket extends string
         ? WritableAccount<TAccountMarket>
         : TAccountMarket,
@@ -71,17 +69,13 @@ export type ResolveMarketInstruction<
 
 export type ResolveMarketInstructionData = {
   discriminator: ReadonlyUint8Array;
-  outcome: boolean;
 };
 
-export type ResolveMarketInstructionDataArgs = { outcome: boolean };
+export type ResolveMarketInstructionDataArgs = {};
 
 export function getResolveMarketInstructionDataEncoder(): FixedSizeEncoder<ResolveMarketInstructionDataArgs> {
   return transformEncoder(
-    getStructEncoder([
-      ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
-      ["outcome", getBooleanEncoder()],
-    ]),
+    getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
     (value) => ({ ...value, discriminator: RESOLVE_MARKET_DISCRIMINATOR }),
   );
 }
@@ -89,7 +83,6 @@ export function getResolveMarketInstructionDataEncoder(): FixedSizeEncoder<Resol
 export function getResolveMarketInstructionDataDecoder(): FixedSizeDecoder<ResolveMarketInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
-    ["outcome", getBooleanDecoder()],
   ]);
 }
 
@@ -104,31 +97,31 @@ export function getResolveMarketInstructionDataCodec(): FixedSizeCodec<
 }
 
 export type ResolveMarketInput<
-  TAccountCreator extends string = string,
+  TAccountResolver extends string = string,
   TAccountMarket extends string = string,
   TAccountPriceUpdate extends string = string,
 > = {
-  creator: TransactionSigner<TAccountCreator>;
+  /** Anyone can resolve a market after the deadline. */
+  resolver: TransactionSigner<TAccountResolver>;
   market: Address<TAccountMarket>;
   priceUpdate: Address<TAccountPriceUpdate>;
-  outcome: ResolveMarketInstructionDataArgs["outcome"];
 };
 
 export function getResolveMarketInstruction<
-  TAccountCreator extends string,
+  TAccountResolver extends string,
   TAccountMarket extends string,
   TAccountPriceUpdate extends string,
   TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
 >(
   input: ResolveMarketInput<
-    TAccountCreator,
+    TAccountResolver,
     TAccountMarket,
     TAccountPriceUpdate
   >,
   config?: { programAddress?: TProgramAddress },
 ): ResolveMarketInstruction<
   TProgramAddress,
-  TAccountCreator,
+  TAccountResolver,
   TAccountMarket,
   TAccountPriceUpdate
 > {
@@ -138,7 +131,7 @@ export function getResolveMarketInstruction<
 
   // Original accounts.
   const originalAccounts = {
-    creator: { value: input.creator ?? null, isWritable: false },
+    resolver: { value: input.resolver ?? null, isWritable: false },
     market: { value: input.market ?? null, isWritable: true },
     priceUpdate: { value: input.priceUpdate ?? null, isWritable: false },
   };
@@ -147,23 +140,18 @@ export function getResolveMarketInstruction<
     ResolvedAccount
   >;
 
-  // Original args.
-  const args = { ...input };
-
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.creator),
+      getAccountMeta(accounts.resolver),
       getAccountMeta(accounts.market),
       getAccountMeta(accounts.priceUpdate),
     ],
-    data: getResolveMarketInstructionDataEncoder().encode(
-      args as ResolveMarketInstructionDataArgs,
-    ),
+    data: getResolveMarketInstructionDataEncoder().encode({}),
     programAddress,
   } as ResolveMarketInstruction<
     TProgramAddress,
-    TAccountCreator,
+    TAccountResolver,
     TAccountMarket,
     TAccountPriceUpdate
   >);
@@ -175,7 +163,8 @@ export type ParsedResolveMarketInstruction<
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    creator: TAccountMetas[0];
+    /** Anyone can resolve a market after the deadline. */
+    resolver: TAccountMetas[0];
     market: TAccountMetas[1];
     priceUpdate: TAccountMetas[2];
   };
@@ -203,7 +192,7 @@ export function parseResolveMarketInstruction<
   return {
     programAddress: instruction.programAddress,
     accounts: {
-      creator: getNextAccount(),
+      resolver: getNextAccount(),
       market: getNextAccount(),
       priceUpdate: getNextAccount(),
     },

@@ -1,47 +1,72 @@
 use anchor_lang::prelude::*;
 
-/// Maximum length of a market question
 pub const MAX_QUESTION_LEN: usize = 200;
 
-/// Market account storing prediction market state
+/// Maximum fee in basis points (10%). Anything above is rejected as a mistake.
+pub const MAX_FEE_BPS: u16 = 1_000;
+
+/// Minimum seed liquidity required from the admin at market creation (0.1 SOL).
+pub const MIN_INITIAL_LIQUIDITY_LAMPORTS: u64 = 100_000_000;
+
+/// AMM-based prediction market.
+///
+/// The market is a Polymarket-style conditional-token CFMM:
+/// - `initial_liquidity` lamports are seeded by the admin at creation.
+/// - `yes_shares` and `no_shares` start equal to `initial_liquidity` and
+///   evolve via CPMM swaps (`k = yes_shares * no_shares`).
+/// - Every buy mints `D_net` YES + `D_net` NO from user lamports
+///   (after fee), swaps one side in the pool, and returns the net to
+///   the user.
+/// - Every sell is the reverse: user returns shares to the pool, a
+///   matching pair is burned, and lamports are paid out.
+/// - At resolve, each winning share redeems for 1 lamport from the
+///   treasury (the market PDA itself).
 #[account]
 #[derive(InitSpace)]
 pub struct Market {
-    /// Creator who can resolve the market
     pub creator: Pubkey,
-    /// Unique market ID (per creator)
     pub market_id: u64,
-    /// The prediction question
     #[max_len(MAX_QUESTION_LEN)]
     pub question: String,
-    /// Unix timestamp when betting closes and resolution can occur
     pub resolution_time: i64,
-    /// Total lamports bet on YES
-    pub yes_pool: u64,
-    /// Total lamports bet on NO
-    pub no_pool: u64,
-    /// Whether the market has been resolved
+    /// Pyth price feed identifier (e.g. BTC/USD, SOL/USD)
+    pub feed_id: [u8; 32],
+    /// Strike in USD: either whole dollars (`target_price_encoding == 0`, e.g. 79000 = $79,000)
+    /// or nanodollars (`target_price_encoding == 1`, e.g. 79_000_000_000_000 = $79,000.000).
+    pub target_price: i64,
+
+    /// YES shares currently held by the AMM pool.
+    pub yes_shares: u64,
+    /// NO shares currently held by the AMM pool.
+    pub no_shares: u64,
+    /// Sum of `yes_shares` across all `UserPosition`s. Used for solvency checks.
+    pub yes_supply_user: u64,
+    /// Sum of `no_shares` across all `UserPosition`s.
+    pub no_supply_user: u64,
+
+    /// Swap fee in basis points (1 bp = 0.01%). `200` = 2%.
+    pub fee_bps: u16,
+    /// Admin's initial SOL deposit (== starting `yes_shares` == starting `no_shares`).
+    pub initial_liquidity: u64,
+    /// Set once the admin has claimed the LP side of the pool after resolve.
+    pub liquidity_withdrawn: bool,
+
     pub resolved: bool,
-    /// The winning outcome (None until resolved, Some(true) = YES won)
+    /// `Some(true)` = YES won, `Some(false)` = NO won.
     pub outcome: Option<bool>,
-    /// PDA bump seed
+    /// `0` = `target_price` is whole USD. `1` = `target_price` is USD × 1e9 (9 decimal places).
+    pub target_price_encoding: u8,
     pub bump: u8,
 }
 
-/// User position in a specific market
+/// Per-user, per-market share balances. Claim is implicit: once the
+/// winning shares are redeemed, the balance drops to zero.
 #[account]
 #[derive(InitSpace)]
 pub struct UserPosition {
-    /// The market this position is for
     pub market: Pubkey,
-    /// The user who owns this position
     pub user: Pubkey,
-    /// Lamports bet on YES
-    pub yes_amount: u64,
-    /// Lamports bet on NO
-    pub no_amount: u64,
-    /// Whether winnings have been claimed
-    pub claimed: bool,
-    /// PDA bump seed
+    pub yes_shares: u64,
+    pub no_shares: u64,
     pub bump: u8,
 }

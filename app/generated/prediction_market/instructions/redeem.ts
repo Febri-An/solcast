@@ -38,17 +38,15 @@ import {
   type ResolvedAccount,
 } from "../shared";
 
-export const CLAIM_WINNINGS_DISCRIMINATOR = new Uint8Array([
-  161, 215, 24, 59, 14, 236, 242, 221,
+export const REDEEM_DISCRIMINATOR = new Uint8Array([
+  184, 12, 86, 149, 70, 196, 97, 225,
 ]);
 
-export function getClaimWinningsDiscriminatorBytes() {
-  return fixEncoderSize(getBytesEncoder(), 8).encode(
-    CLAIM_WINNINGS_DISCRIMINATOR,
-  );
+export function getRedeemDiscriminatorBytes() {
+  return fixEncoderSize(getBytesEncoder(), 8).encode(REDEEM_DISCRIMINATOR);
 }
 
-export type ClaimWinningsInstruction<
+export type RedeemInstruction<
   TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
   TAccountUser extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
@@ -71,36 +69,34 @@ export type ClaimWinningsInstruction<
     ]
   >;
 
-export type ClaimWinningsInstructionData = {
-  discriminator: ReadonlyUint8Array;
-};
+export type RedeemInstructionData = { discriminator: ReadonlyUint8Array };
 
-export type ClaimWinningsInstructionDataArgs = {};
+export type RedeemInstructionDataArgs = {};
 
-export function getClaimWinningsInstructionDataEncoder(): FixedSizeEncoder<ClaimWinningsInstructionDataArgs> {
+export function getRedeemInstructionDataEncoder(): FixedSizeEncoder<RedeemInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
-    (value) => ({ ...value, discriminator: CLAIM_WINNINGS_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: REDEEM_DISCRIMINATOR }),
   );
 }
 
-export function getClaimWinningsInstructionDataDecoder(): FixedSizeDecoder<ClaimWinningsInstructionData> {
+export function getRedeemInstructionDataDecoder(): FixedSizeDecoder<RedeemInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
   ]);
 }
 
-export function getClaimWinningsInstructionDataCodec(): FixedSizeCodec<
-  ClaimWinningsInstructionDataArgs,
-  ClaimWinningsInstructionData
+export function getRedeemInstructionDataCodec(): FixedSizeCodec<
+  RedeemInstructionDataArgs,
+  RedeemInstructionData
 > {
   return combineCodec(
-    getClaimWinningsInstructionDataEncoder(),
-    getClaimWinningsInstructionDataDecoder(),
+    getRedeemInstructionDataEncoder(),
+    getRedeemInstructionDataDecoder(),
   );
 }
 
-export type ClaimWinningsAsyncInput<
+export type RedeemAsyncInput<
   TAccountUser extends string = string,
   TAccountMarket extends string = string,
   TAccountUserPosition extends string = string,
@@ -110,20 +106,16 @@ export type ClaimWinningsAsyncInput<
   userPosition?: Address<TAccountUserPosition>;
 };
 
-export async function getClaimWinningsInstructionAsync<
+export async function getRedeemInstructionAsync<
   TAccountUser extends string,
   TAccountMarket extends string,
   TAccountUserPosition extends string,
   TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
 >(
-  input: ClaimWinningsAsyncInput<
-    TAccountUser,
-    TAccountMarket,
-    TAccountUserPosition
-  >,
+  input: RedeemAsyncInput<TAccountUser, TAccountMarket, TAccountUserPosition>,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
-  ClaimWinningsInstruction<
+  RedeemInstruction<
     TProgramAddress,
     TAccountUser,
     TAccountMarket,
@@ -166,9 +158,9 @@ export async function getClaimWinningsInstructionAsync<
       getAccountMeta(accounts.market),
       getAccountMeta(accounts.userPosition),
     ],
-    data: getClaimWinningsInstructionDataEncoder().encode({}),
+    data: getRedeemInstructionDataEncoder().encode({}),
     programAddress,
-  } as ClaimWinningsInstruction<
+  } as RedeemInstruction<
     TProgramAddress,
     TAccountUser,
     TAccountMarket,
@@ -176,7 +168,7 @@ export async function getClaimWinningsInstructionAsync<
   >);
 }
 
-export type ClaimWinningsInput<
+export type RedeemInput<
   TAccountUser extends string = string,
   TAccountMarket extends string = string,
   TAccountUserPosition extends string = string,
@@ -186,15 +178,15 @@ export type ClaimWinningsInput<
   userPosition: Address<TAccountUserPosition>;
 };
 
-export function getClaimWinningsInstruction<
+export function getRedeemInstruction<
   TAccountUser extends string,
   TAccountMarket extends string,
   TAccountUserPosition extends string,
   TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
 >(
-  input: ClaimWinningsInput<TAccountUser, TAccountMarket, TAccountUserPosition>,
+  input: RedeemInput<TAccountUser, TAccountMarket, TAccountUserPosition>,
   config?: { programAddress?: TProgramAddress },
-): ClaimWinningsInstruction<
+): RedeemInstruction<
   TProgramAddress,
   TAccountUser,
   TAccountMarket,
@@ -222,9 +214,9 @@ export function getClaimWinningsInstruction<
       getAccountMeta(accounts.market),
       getAccountMeta(accounts.userPosition),
     ],
-    data: getClaimWinningsInstructionDataEncoder().encode({}),
+    data: getRedeemInstructionDataEncoder().encode({}),
     programAddress,
-  } as ClaimWinningsInstruction<
+  } as RedeemInstruction<
     TProgramAddress,
     TAccountUser,
     TAccountMarket,
@@ -232,7 +224,7 @@ export function getClaimWinningsInstruction<
   >);
 }
 
-export type ParsedClaimWinningsInstruction<
+export type ParsedRedeemInstruction<
   TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
@@ -242,17 +234,17 @@ export type ParsedClaimWinningsInstruction<
     market: TAccountMetas[1];
     userPosition: TAccountMetas[2];
   };
-  data: ClaimWinningsInstructionData;
+  data: RedeemInstructionData;
 };
 
-export function parseClaimWinningsInstruction<
+export function parseRedeemInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedClaimWinningsInstruction<TProgram, TAccountMetas> {
+): ParsedRedeemInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 3) {
     // TODO: Coded error.
     throw new Error("Not enough accounts");
@@ -270,6 +262,6 @@ export function parseClaimWinningsInstruction<
       market: getNextAccount(),
       userPosition: getNextAccount(),
     },
-    data: getClaimWinningsInstructionDataDecoder().decode(instruction.data),
+    data: getRedeemInstructionDataDecoder().decode(instruction.data),
   };
 }

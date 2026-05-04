@@ -14,11 +14,12 @@ import {
   type ReadonlyUint8Array,
 } from "@solana/kit";
 import {
-  type ParsedClaimWinningsInstruction,
+  type ParsedBuyInstruction,
   type ParsedCreateMarketInstruction,
-  type ParsedPlaceBetInstruction,
+  type ParsedRedeemInstruction,
   type ParsedResolveMarketInstruction,
-  type ParsedSampleInstruction,
+  type ParsedSellInstruction,
+  type ParsedWithdrawLiquidityInstruction,
 } from "../instructions";
 
 export const PREDICTION_MARKET_PROGRAM_ADDRESS =
@@ -73,11 +74,12 @@ export function identifyPredictionMarketAccount(
 }
 
 export enum PredictionMarketInstruction {
-  ClaimWinnings,
+  Buy,
   CreateMarket,
-  PlaceBet,
+  Redeem,
   ResolveMarket,
-  Sample,
+  Sell,
+  WithdrawLiquidity,
 }
 
 export function identifyPredictionMarketInstruction(
@@ -88,12 +90,12 @@ export function identifyPredictionMarketInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([161, 215, 24, 59, 14, 236, 242, 221]),
+        new Uint8Array([102, 6, 61, 18, 1, 218, 235, 234]),
       ),
       0,
     )
   ) {
-    return PredictionMarketInstruction.ClaimWinnings;
+    return PredictionMarketInstruction.Buy;
   }
   if (
     containsBytes(
@@ -110,12 +112,12 @@ export function identifyPredictionMarketInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([222, 62, 67, 220, 63, 166, 126, 33]),
+        new Uint8Array([184, 12, 86, 149, 70, 196, 97, 225]),
       ),
       0,
     )
   ) {
-    return PredictionMarketInstruction.PlaceBet;
+    return PredictionMarketInstruction.Redeem;
   }
   if (
     containsBytes(
@@ -132,12 +134,23 @@ export function identifyPredictionMarketInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([70, 65, 102, 239, 199, 157, 60, 198]),
+        new Uint8Array([51, 230, 133, 164, 1, 127, 131, 173]),
       ),
       0,
     )
   ) {
-    return PredictionMarketInstruction.Sample;
+    return PredictionMarketInstruction.Sell;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([149, 158, 33, 185, 47, 243, 253, 31]),
+      ),
+      0,
+    )
+  ) {
+    return PredictionMarketInstruction.WithdrawLiquidity;
   }
   throw new Error(
     "The provided instruction could not be identified as a predictionMarket instruction.",
@@ -148,17 +161,20 @@ export type ParsedPredictionMarketInstruction<
   TProgram extends string = "DYy72hMhhyHvbPjy71pp4137U4FumNuzM6i3mLVU2MWk",
 > =
   | ({
-      instructionType: PredictionMarketInstruction.ClaimWinnings;
-    } & ParsedClaimWinningsInstruction<TProgram>)
+      instructionType: PredictionMarketInstruction.Buy;
+    } & ParsedBuyInstruction<TProgram>)
   | ({
       instructionType: PredictionMarketInstruction.CreateMarket;
     } & ParsedCreateMarketInstruction<TProgram>)
   | ({
-      instructionType: PredictionMarketInstruction.PlaceBet;
-    } & ParsedPlaceBetInstruction<TProgram>)
+      instructionType: PredictionMarketInstruction.Redeem;
+    } & ParsedRedeemInstruction<TProgram>)
   | ({
       instructionType: PredictionMarketInstruction.ResolveMarket;
     } & ParsedResolveMarketInstruction<TProgram>)
   | ({
-      instructionType: PredictionMarketInstruction.Sample;
-    } & ParsedSampleInstruction<TProgram>);
+      instructionType: PredictionMarketInstruction.Sell;
+    } & ParsedSellInstruction<TProgram>)
+  | ({
+      instructionType: PredictionMarketInstruction.WithdrawLiquidity;
+    } & ParsedWithdrawLiquidityInstruction<TProgram>);

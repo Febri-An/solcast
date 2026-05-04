@@ -20,10 +20,14 @@ import {
   getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
+  getU16Decoder,
+  getU16Encoder,
   getU32Decoder,
   getU32Encoder,
   getU64Decoder,
   getU64Encoder,
+  getU8Decoder,
+  getU8Encoder,
   getUtf8Decoder,
   getUtf8Encoder,
   transformEncoder,
@@ -90,12 +94,22 @@ export type CreateMarketInstructionData = {
   marketId: bigint;
   question: string;
   resolutionTime: bigint;
+  feedId: ReadonlyUint8Array;
+  targetPrice: bigint;
+  targetPriceEncoding: number;
+  initialLiquidity: bigint;
+  feeBps: number;
 };
 
 export type CreateMarketInstructionDataArgs = {
   marketId: number | bigint;
   question: string;
   resolutionTime: number | bigint;
+  feedId: ReadonlyUint8Array;
+  targetPrice: number | bigint;
+  targetPriceEncoding: number;
+  initialLiquidity: number | bigint;
+  feeBps: number;
 };
 
 export function getCreateMarketInstructionDataEncoder(): Encoder<CreateMarketInstructionDataArgs> {
@@ -105,6 +119,11 @@ export function getCreateMarketInstructionDataEncoder(): Encoder<CreateMarketIns
       ["marketId", getU64Encoder()],
       ["question", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
       ["resolutionTime", getI64Encoder()],
+      ["feedId", fixEncoderSize(getBytesEncoder(), 32)],
+      ["targetPrice", getI64Encoder()],
+      ["targetPriceEncoding", getU8Encoder()],
+      ["initialLiquidity", getU64Encoder()],
+      ["feeBps", getU16Encoder()],
     ]),
     (value) => ({ ...value, discriminator: CREATE_MARKET_DISCRIMINATOR }),
   );
@@ -116,6 +135,11 @@ export function getCreateMarketInstructionDataDecoder(): Decoder<CreateMarketIns
     ["marketId", getU64Decoder()],
     ["question", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
     ["resolutionTime", getI64Decoder()],
+    ["feedId", fixDecoderSize(getBytesDecoder(), 32)],
+    ["targetPrice", getI64Decoder()],
+    ["targetPriceEncoding", getU8Decoder()],
+    ["initialLiquidity", getU64Decoder()],
+    ["feeBps", getU16Decoder()],
   ]);
 }
 
@@ -140,6 +164,11 @@ export type CreateMarketAsyncInput<
   marketId: CreateMarketInstructionDataArgs["marketId"];
   question: CreateMarketInstructionDataArgs["question"];
   resolutionTime: CreateMarketInstructionDataArgs["resolutionTime"];
+  feedId: CreateMarketInstructionDataArgs["feedId"];
+  targetPrice: CreateMarketInstructionDataArgs["targetPrice"];
+  targetPriceEncoding: CreateMarketInstructionDataArgs["targetPriceEncoding"];
+  initialLiquidity: CreateMarketInstructionDataArgs["initialLiquidity"];
+  feeBps: CreateMarketInstructionDataArgs["feeBps"];
 };
 
 export async function getCreateMarketInstructionAsync<
@@ -226,6 +255,11 @@ export type CreateMarketInput<
   marketId: CreateMarketInstructionDataArgs["marketId"];
   question: CreateMarketInstructionDataArgs["question"];
   resolutionTime: CreateMarketInstructionDataArgs["resolutionTime"];
+  feedId: CreateMarketInstructionDataArgs["feedId"];
+  targetPrice: CreateMarketInstructionDataArgs["targetPrice"];
+  targetPriceEncoding: CreateMarketInstructionDataArgs["targetPriceEncoding"];
+  initialLiquidity: CreateMarketInstructionDataArgs["initialLiquidity"];
+  feeBps: CreateMarketInstructionDataArgs["feeBps"];
 };
 
 export function getCreateMarketInstruction<

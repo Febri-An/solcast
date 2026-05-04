@@ -24,93 +24,101 @@ import {
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
-  type ReadonlyAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
+  type WritableAccount,
   type WritableSignerAccount,
 } from "@solana/kit";
 import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
 import { getAccountMetaFactory, type ResolvedAccount } from "../shared";
 
-export const SAMPLE_DISCRIMINATOR = new Uint8Array([
-  70, 65, 102, 239, 199, 157, 60, 198,
+export const WITHDRAW_LIQUIDITY_DISCRIMINATOR = new Uint8Array([
+  149, 158, 33, 185, 47, 243, 253, 31,
 ]);
 
-export function getSampleDiscriminatorBytes() {
-  return fixEncoderSize(getBytesEncoder(), 8).encode(SAMPLE_DISCRIMINATOR);
+export function getWithdrawLiquidityDiscriminatorBytes() {
+  return fixEncoderSize(getBytesEncoder(), 8).encode(
+    WITHDRAW_LIQUIDITY_DISCRIMINATOR,
+  );
 }
 
-export type SampleInstruction<
+export type WithdrawLiquidityInstruction<
   TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
-  TAccountPayer extends string | AccountMeta<string> = string,
-  TAccountPriceUpdate extends string | AccountMeta<string> = string,
+  TAccountAdmin extends string | AccountMeta<string> = string,
+  TAccountMarket extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
   InstructionWithAccounts<
     [
-      TAccountPayer extends string
-        ? WritableSignerAccount<TAccountPayer> &
-            AccountSignerMeta<TAccountPayer>
-        : TAccountPayer,
-      TAccountPriceUpdate extends string
-        ? ReadonlyAccount<TAccountPriceUpdate>
-        : TAccountPriceUpdate,
+      TAccountAdmin extends string
+        ? WritableSignerAccount<TAccountAdmin> &
+            AccountSignerMeta<TAccountAdmin>
+        : TAccountAdmin,
+      TAccountMarket extends string
+        ? WritableAccount<TAccountMarket>
+        : TAccountMarket,
       ...TRemainingAccounts,
     ]
   >;
 
-export type SampleInstructionData = { discriminator: ReadonlyUint8Array };
+export type WithdrawLiquidityInstructionData = {
+  discriminator: ReadonlyUint8Array;
+};
 
-export type SampleInstructionDataArgs = {};
+export type WithdrawLiquidityInstructionDataArgs = {};
 
-export function getSampleInstructionDataEncoder(): FixedSizeEncoder<SampleInstructionDataArgs> {
+export function getWithdrawLiquidityInstructionDataEncoder(): FixedSizeEncoder<WithdrawLiquidityInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([["discriminator", fixEncoderSize(getBytesEncoder(), 8)]]),
-    (value) => ({ ...value, discriminator: SAMPLE_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: WITHDRAW_LIQUIDITY_DISCRIMINATOR }),
   );
 }
 
-export function getSampleInstructionDataDecoder(): FixedSizeDecoder<SampleInstructionData> {
+export function getWithdrawLiquidityInstructionDataDecoder(): FixedSizeDecoder<WithdrawLiquidityInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
   ]);
 }
 
-export function getSampleInstructionDataCodec(): FixedSizeCodec<
-  SampleInstructionDataArgs,
-  SampleInstructionData
+export function getWithdrawLiquidityInstructionDataCodec(): FixedSizeCodec<
+  WithdrawLiquidityInstructionDataArgs,
+  WithdrawLiquidityInstructionData
 > {
   return combineCodec(
-    getSampleInstructionDataEncoder(),
-    getSampleInstructionDataDecoder(),
+    getWithdrawLiquidityInstructionDataEncoder(),
+    getWithdrawLiquidityInstructionDataDecoder(),
   );
 }
 
-export type SampleInput<
-  TAccountPayer extends string = string,
-  TAccountPriceUpdate extends string = string,
+export type WithdrawLiquidityInput<
+  TAccountAdmin extends string = string,
+  TAccountMarket extends string = string,
 > = {
-  payer: TransactionSigner<TAccountPayer>;
-  priceUpdate: Address<TAccountPriceUpdate>;
+  admin: TransactionSigner<TAccountAdmin>;
+  market: Address<TAccountMarket>;
 };
 
-export function getSampleInstruction<
-  TAccountPayer extends string,
-  TAccountPriceUpdate extends string,
+export function getWithdrawLiquidityInstruction<
+  TAccountAdmin extends string,
+  TAccountMarket extends string,
   TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
 >(
-  input: SampleInput<TAccountPayer, TAccountPriceUpdate>,
+  input: WithdrawLiquidityInput<TAccountAdmin, TAccountMarket>,
   config?: { programAddress?: TProgramAddress },
-): SampleInstruction<TProgramAddress, TAccountPayer, TAccountPriceUpdate> {
+): WithdrawLiquidityInstruction<
+  TProgramAddress,
+  TAccountAdmin,
+  TAccountMarket
+> {
   // Program address.
   const programAddress =
     config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
-    payer: { value: input.payer ?? null, isWritable: true },
-    priceUpdate: { value: input.priceUpdate ?? null, isWritable: false },
+    admin: { value: input.admin ?? null, isWritable: true },
+    market: { value: input.market ?? null, isWritable: true },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -119,35 +127,36 @@ export function getSampleInstruction<
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
-    accounts: [
-      getAccountMeta(accounts.payer),
-      getAccountMeta(accounts.priceUpdate),
-    ],
-    data: getSampleInstructionDataEncoder().encode({}),
+    accounts: [getAccountMeta(accounts.admin), getAccountMeta(accounts.market)],
+    data: getWithdrawLiquidityInstructionDataEncoder().encode({}),
     programAddress,
-  } as SampleInstruction<TProgramAddress, TAccountPayer, TAccountPriceUpdate>);
+  } as WithdrawLiquidityInstruction<
+    TProgramAddress,
+    TAccountAdmin,
+    TAccountMarket
+  >);
 }
 
-export type ParsedSampleInstruction<
+export type ParsedWithdrawLiquidityInstruction<
   TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
-    payer: TAccountMetas[0];
-    priceUpdate: TAccountMetas[1];
+    admin: TAccountMetas[0];
+    market: TAccountMetas[1];
   };
-  data: SampleInstructionData;
+  data: WithdrawLiquidityInstructionData;
 };
 
-export function parseSampleInstruction<
+export function parseWithdrawLiquidityInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedSampleInstruction<TProgram, TAccountMetas> {
+): ParsedWithdrawLiquidityInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 2) {
     // TODO: Coded error.
     throw new Error("Not enough accounts");
@@ -160,7 +169,7 @@ export function parseSampleInstruction<
   };
   return {
     programAddress: instruction.programAddress,
-    accounts: { payer: getNextAccount(), priceUpdate: getNextAccount() },
-    data: getSampleInstructionDataDecoder().decode(instruction.data),
+    accounts: { admin: getNextAccount(), market: getNextAccount() },
+    data: getWithdrawLiquidityInstructionDataDecoder().decode(instruction.data),
   };
 }

@@ -1,24 +1,16 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
+
+import Link from "next/link";
 
 import { type Address } from "@solana/kit";
 
-import {
-  getMarketDecoder,
-  type Market,
-  PREDICTION_MARKET_PROGRAM_ADDRESS,
-} from "../generated/prediction_market";
-import {
-  getUserPositionDecoder,
-  type UserPosition,
-} from "../generated/prediction_market/accounts/userPosition";
+import { type Market } from "../generated/prediction_market";
+import { type UserPosition } from "../generated/prediction_market/accounts/userPosition";
+import { usePositionsRealtime } from "../hooks/use-positions-realtime";
 import { ActivityStats } from "./activity-stats";
 import { PositionCard } from "./position-card";
-
-const USER_POSITION_DISCRIMINATOR_BASE58 = "j9SjDYAWesU";
-const DEVNET_RPC_URL = "https://api.devnet.solana.com";
-const POLL_INTERVAL_MS = 3000;
 
 interface PositionWithMarket {
   positionAddress: Address;
@@ -28,10 +20,15 @@ interface PositionWithMarket {
 }
 
 export interface ActivityStatsData {
+  /** Sum of shares currently held across active positions (approx TVL). */
   totalInvested: bigint;
+  /** Sum of redeemable winnings pending on resolved markets. */
   totalWon: bigint;
+  /** Paid-out positions (zeroed shares on resolved markets). */
   totalClaimed: bigint;
+  /** Sum of losing-side shares on resolved markets. */
   totalLost: bigint;
+  /** Placeholder — we don't track cost basis yet. */
   roiPercent: number;
   activePositions: number;
   claimablePositions: number;
@@ -44,139 +41,30 @@ interface PositionsListProps {
 }
 
 export function PositionsList({ walletAddress }: PositionsListProps): ReactNode {
-  const [positions, setPositions] = useState<PositionWithMarket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
 
-  const fetchPositions = useCallback(async () => {
-    if (!walletAddress) return;
+  const {
+    positions: rawPositions,
+    markets: marketMap,
+    loading,
+    error,
+    refresh: fetchPositions,
+  } = usePositionsRealtime(walletAddress);
 
-    try {
-      const positionsResponse = await fetch(DEVNET_RPC_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "getProgramAccounts",
-          params: [
-            PREDICTION_MARKET_PROGRAM_ADDRESS,
-            {
-              encoding: "base64",
-              commitment: "confirmed",
-              filters: [
-                {
-                  memcmp: {
-                    offset: 0,
-                    bytes: USER_POSITION_DISCRIMINATOR_BASE58,
-                  },
-                },
-                {
-                  memcmp: {
-                    offset: 40, // 8 (discriminator) + 32 (market) = user field
-                    bytes: walletAddress,
-                  },
-                },
-              ],
-            },
-          ],
-        }),
-      });
-
-      const positionsResult = await positionsResponse.json();
-
-      if (positionsResult.error) {
-        throw new Error(positionsResult.error.message);
-      }
-
-      const positionDecoder = getUserPositionDecoder();
-      const decodedPositions: Array<{ address: Address; position: UserPosition }> = [];
-
-      for (const account of positionsResult.result || []) {
-        try {
-          const data = Uint8Array.from(atob(account.account.data[0]), (c) =>
-            c.charCodeAt(0)
-          );
-          const position = positionDecoder.decode(data);
-          decodedPositions.push({
-            address: account.pubkey as Address,
-            position,
-          });
-        } catch (decodeError) {
-          console.warn("Failed to decode position:", account.pubkey, decodeError);
-        }
-      }
-
-      const marketAddresses = [...new Set(decodedPositions.map((p) => p.position.market))];
-
-      const marketMap = new Map<string, Market>();
-
-      if (marketAddresses.length > 0) {
-        const marketsResponse = await fetch(DEVNET_RPC_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "getMultipleAccounts",
-            params: [
-              marketAddresses,
-              { encoding: "base64", commitment: "confirmed" },
-            ],
-          }),
-        });
-
-        const marketsResult = await marketsResponse.json();
-        const marketDecoder = getMarketDecoder();
-
-        if (marketsResult.result?.value) {
-          marketsResult.result.value.forEach(
-            (account: { data: string[] } | null, index: number) => {
-              if (account && account.data) {
-                try {
-                  const data = Uint8Array.from(atob(account.data[0]), (c) =>
-                    c.charCodeAt(0)
-                  );
-                  const market = marketDecoder.decode(data);
-                  marketMap.set(marketAddresses[index], market);
-                } catch (e) {
-                  console.warn("Failed to decode market:", marketAddresses[index]);
-                }
-              }
-            }
-          );
-        }
-      }
-
-      const enrichedPositions: PositionWithMarket[] = decodedPositions.map((p) => ({
-        positionAddress: p.address,
-        position: p.position,
-        marketAddress: p.position.market,
-        market: marketMap.get(p.position.market) || null,
-      }));
-
-      enrichedPositions.sort((a, b) => {
-        const aTime = a.market?.resolutionTime ?? 0n;
-        const bTime = b.market?.resolutionTime ?? 0n;
-        return Number(bTime - aTime);
-      });
-
-      setPositions(enrichedPositions);
-      setError(null);
-    } catch (err) {
-      console.error("Failed to fetch positions:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch positions");
-    } finally {
-      setLoading(false);
-    }
-  }, [walletAddress]);
-
-  useEffect(() => {
-    fetchPositions();
-    const interval = setInterval(fetchPositions, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchPositions]);
+  const positions = useMemo<PositionWithMarket[]>(() => {
+    const enriched = rawPositions.map((p) => ({
+      positionAddress: p.positionAddress,
+      position: p.position,
+      marketAddress: p.marketAddress,
+      market: marketMap.get(p.marketAddress) ?? null,
+    }));
+    enriched.sort((a, b) => {
+      const aTime = a.market?.resolutionTime ?? 0n;
+      const bTime = b.market?.resolutionTime ?? 0n;
+      return Number(bTime - aTime);
+    });
+    return enriched;
+  }, [rawPositions, marketMap]);
 
   const stats = useMemo((): ActivityStatsData => {
     let totalInvested = 0n;
@@ -187,10 +75,11 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
     let claimableCount = 0;
 
     for (const { position, market } of positions) {
-      const invested = position.yesAmount + position.noAmount;
-      totalInvested += invested;
+      const heldShares = position.yesShares + position.noShares;
 
       if (!market || !market.resolved) {
+        // Active position — sum held shares as a proxy for "invested size".
+        totalInvested += heldShares;
         activeCount++;
         continue;
       }
@@ -198,30 +87,22 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
       const outcome = market.outcome;
       if (outcome === null || outcome === undefined) continue;
 
-      const userWinningBet = outcome ? position.yesAmount : position.noAmount;
-      const userLosingBet = outcome ? position.noAmount : position.yesAmount;
+      const winningShares = outcome ? position.yesShares : position.noShares;
+      const losingShares = outcome ? position.noShares : position.yesShares;
 
-      if (userWinningBet > 0n) {
-        const winningPool = outcome ? market.yesPool : market.noPool;
-        const losingPool = outcome ? market.noPool : market.yesPool;
-        const winnings = winningPool > 0n ? (userWinningBet * losingPool) / winningPool : 0n;
-        const payout = userWinningBet + winnings;
-
-        totalWon += winnings;
-        totalLost += userLosingBet;
-
-        if (position.claimed) {
-          totalClaimed += payout;
-        } else {
-          claimableCount++;
-        }
-      } else {
-        totalLost += invested;
+      totalLost += losingShares;
+      if (winningShares > 0n) {
+        totalWon += winningShares;
+        claimableCount++;
+      } else if (heldShares === 0n) {
+        // Likely already redeemed — we don't know the actual amount anymore.
+        totalClaimed += 0n;
       }
     }
 
-    const netPnL = totalWon - totalLost;
-    const roiPercent = totalInvested > 0n ? Number((netPnL * 10000n) / totalInvested) / 100 : 0;
+    // Without cost-basis tracking we can't compute a meaningful ROI on-chain;
+    // leave it at zero until we persist trade history.
+    const roiPercent = 0;
 
     return {
       totalInvested,
@@ -240,11 +121,12 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
       if (activeTab === "active") return !market?.resolved;
       if (activeTab === "resolved") return market?.resolved;
 
-      if (!market?.resolved || position.claimed) return false;
+      // "claimable" = resolved market + user still holds winning shares
+      if (!market?.resolved) return false;
       const outcome = market.outcome;
       if (outcome === null || outcome === undefined) return false;
-      const userWinningBet = outcome ? position.yesAmount : position.noAmount;
-      return userWinningBet > 0n;
+      const winningShares = outcome ? position.yesShares : position.noShares;
+      return winningShares > 0n;
     });
   }, [positions, activeTab]);
 
@@ -260,10 +142,8 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
         resolved++;
         const outcome = market.outcome;
         if (outcome !== null && outcome !== undefined) {
-          const userWinningBet = outcome ? position.yesAmount : position.noAmount;
-          if (userWinningBet > 0n && !position.claimed) {
-            claimable++;
-          }
+          const winningShares = outcome ? position.yesShares : position.noShares;
+          if (winningShares > 0n) claimable++;
         }
       }
     }
@@ -273,22 +153,11 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
 
   if (loading && positions.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="flex items-center gap-2 text-sm text-muted">
+      <div className="flex items-center justify-center py-16">
+        <div className="flex items-center gap-2.5 text-sm text-muted">
           <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
           </svg>
           Loading your positions...
         </div>
@@ -298,11 +167,11 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
-        <p className="text-sm text-red-700 mb-2">{error}</p>
+      <div className="rounded-2xl border border-red/20 bg-red-muted p-6 text-center">
+        <p className="text-sm text-red-text mb-3">{error}</p>
         <button
           onClick={fetchPositions}
-          className="text-sm font-medium text-red-600 hover:underline"
+          className="text-sm font-medium text-red-text hover:text-red transition-colors"
         >
           Try again
         </button>
@@ -312,60 +181,46 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
 
   if (positions.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border-low p-8 text-center">
-        <div className="mx-auto w-12 h-12 rounded-full bg-cream flex items-center justify-center mb-3">
-          <svg
-            className="h-6 w-6 text-muted"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-            />
+      <div className="rounded-2xl border border-dashed border-border-low bg-bg2 p-12 text-center">
+        <div className="mx-auto w-14 h-14 rounded-2xl bg-bg3 border border-border-low flex items-center justify-center mb-4">
+          <svg className="h-7 w-7 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
         </div>
-        <p className="text-sm text-muted mb-1">No positions yet</p>
-        <p className="text-xs text-muted/70 mb-4">
-          Place your first bet to start tracking your activity
-        </p>
-        <a
+        <p className="text-sm font-medium text-foreground-secondary mb-1">No positions yet</p>
+        <p className="text-xs text-muted mb-5">Place your first bet to start tracking your activity</p>
+        <Link
           href="/"
-          className="inline-block text-sm font-medium text-foreground hover:underline"
+          className="inline-block rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-hover"
         >
           Browse markets
-        </a>
+        </Link>
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      {/* Stats Dashboard */}
       <ActivityStats stats={stats} isLoading={loading} />
 
-      {/* Positions Section */}
       <div className="space-y-4">
         {/* Tabs */}
         <div className="flex items-center justify-between">
-          <div className="flex gap-1 rounded-lg bg-cream p-1">
+          <div className="flex items-center gap-1 rounded-xl bg-bg2 border border-border-low p-1">
             {(["all", "active", "resolved", "claimable"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
                   activeTab === tab
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted hover:text-foreground"
+                    ? "bg-bg3 text-foreground shadow-sm"
+                    : "text-muted hover:text-foreground-secondary"
                 }`}
               >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
                 {tabCounts[tab] > 0 && (
-                  <span className="ml-1.5 text-xs text-muted">
-                    ({tabCounts[tab]})
+                  <span className={`ml-1.5 text-xs ${activeTab === tab ? "text-foreground-secondary" : "text-muted"}`}>
+                    {tabCounts[tab]}
                   </span>
                 )}
               </button>
@@ -374,15 +229,18 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
           <button
             onClick={fetchPositions}
             disabled={loading}
-            className="text-xs text-muted hover:text-foreground transition disabled:opacity-50"
+            className="flex items-center gap-1.5 text-xs text-muted hover:text-foreground-secondary transition-colors disabled:opacity-50"
           >
-            {loading ? "Refreshing..." : "Refresh"}
+            <svg className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {loading ? "Refreshing" : "Refresh"}
           </button>
         </div>
 
-        {/* Positions Grid */}
+        {/* Positions */}
         {filteredPositions.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border-low p-8 text-center">
+          <div className="rounded-2xl border border-dashed border-border-low bg-bg2 p-10 text-center">
             <p className="text-sm text-muted">
               No {activeTab === "all" ? "" : activeTab} positions
             </p>
