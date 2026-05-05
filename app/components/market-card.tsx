@@ -13,8 +13,8 @@ import { useMarketTrading } from "../hooks/use-market-trading";
 import { useProfile } from "../hooks/use-profile";
 import { useProbabilityFlash } from "../hooks/use-probability-flash";
 import {
+  getResolutionCountdownState,
   resolutionCountdownTextClassName,
-  useResolutionCountdown,
 } from "../hooks/use-resolution-countdown";
 import { formatSol, formatVolume, isShortLiveWindowMarket } from "../lib/market-format";
 import { getAssetBrandName, getAssetIconSrc } from "../lib/price-feeds";
@@ -25,6 +25,7 @@ interface MarketCardProps {
   market: Market;
   marketAddress: Address;
   onUpdate?: () => void;
+  nowSec?: number;
   /** Multi-column grid on home (tab Active); tighter card layout. */
   density?: "grid" | "list";
   className?: string;
@@ -189,6 +190,7 @@ export function MarketCard({
   market,
   marketAddress,
   onUpdate,
+  nowSec,
   density = "list",
   className,
 }: MarketCardProps): ReactNode {
@@ -196,6 +198,7 @@ export function MarketCard({
   const { openProfileModal, configured: profileConfigured } = useProfile();
   const { showToast } = useToast();
   const [bookmarked, setBookmarked] = useState(false);
+  const [initialNowSec] = useState(() => Date.now() / 1000);
 
   const handleRedeemSuccess = useCallback(() => {
     showToast("Winnings redeemed successfully.");
@@ -231,8 +234,9 @@ export function MarketCard({
   const isGrid = density === "grid";
   const shortLiveWindow = isShortLiveWindowMarket(market);
 
-  const { label: countdownLabel, urgency: countdownUrgency } = useResolutionCountdown(
+  const { label: countdownLabel, urgency: countdownUrgency } = getResolutionCountdownState(
     resolutionTime,
+    nowSec ?? initialNowSec,
     showUpDownCard,
   );
 

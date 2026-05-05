@@ -119,10 +119,13 @@ export function formatMarketTargetUsd(
   });
 }
 
-/** Open for betting: not resolved and before resolution time. */
-export function isOpenForBetting(market: { resolved: boolean; resolutionTime: bigint }): boolean {
+/** Open for betting: not resolved and before resolution time. Pass `nowSec` when grouping lists so tabs stay accurate between refreshes. */
+export function isOpenForBetting(
+  market: { resolved: boolean; resolutionTime: bigint },
+  nowSec: number = Math.floor(Date.now() / 1000),
+): boolean {
   if (market.resolved) return false;
-  return Date.now() / 1000 < Number(market.resolutionTime);
+  return nowSec < Number(market.resolutionTime);
 }
 
 /**
