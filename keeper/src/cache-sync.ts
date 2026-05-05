@@ -8,7 +8,6 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-import { syncMarketsCache } from "../../app/lib/markets-cache";
 import { syncPositionsCache } from "../../app/lib/positions-cache";
 
 export type CacheSyncConfig = {
@@ -31,9 +30,13 @@ export function makeSupabaseClient(
 export async function runCacheSyncOnce(
   supabase: SupabaseClient,
   rpcUrl: string,
-): Promise<{ markets: { upserted: number; deleted: number }; positions: { upserted: number; deleted: number }; durationMs: number }> {
+): Promise<{
+  markets: { skipped: true; reason: "market_full_sync_disabled" };
+  positions: { upserted: number; deleted: number };
+  durationMs: number;
+}> {
   const start = Date.now();
-  const markets = await syncMarketsCache(supabase, rpcUrl);
+  const markets = { skipped: true as const, reason: "market_full_sync_disabled" as const };
   const positions = await syncPositionsCache(supabase, rpcUrl);
   return { markets, positions, durationMs: Date.now() - start };
 }

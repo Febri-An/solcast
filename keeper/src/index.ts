@@ -219,7 +219,7 @@ function startCacheSync(
         config.rpcUrl,
       );
       console.log(
-        `[cache-sync] markets upsert=${markets.upserted} del=${markets.deleted} | positions upsert=${positions.upserted} del=${positions.deleted} | ${durationMs}ms`,
+        `[cache-sync] markets skipped (${markets.reason}) | positions upsert=${positions.upserted} del=${positions.deleted} | ${durationMs}ms`,
       );
     } catch (err) {
       console.error("[cache-sync] failed:", (err as Error).message);

@@ -11,6 +11,11 @@ import {
 } from "@/app/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+const RETRY_DELAYS_MS = [200, 400, 800, 1200];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * POST /api/markets/sync-one
@@ -38,10 +43,32 @@ export async function POST(request: Request) {
   }
 
   try {
-    const row = await fetchMarketFromRpc(SOLANA_RPC_URL, address);
+    console.log(`[api/markets/sync-one] start address=${address}`);
+
+    let row = await fetchMarketFromRpc(SOLANA_RPC_URL, address);
+    console.log(
+      `[api/markets/sync-one] attempt=0 address=${address} found=${Boolean(row)}`,
+    );
+    for (const delayMs of RETRY_DELAYS_MS) {
+      if (row) break;
+      await sleep(delayMs);
+      row = await fetchMarketFromRpc(SOLANA_RPC_URL, address);
+      console.log(
+        `[api/markets/sync-one] retry delay_ms=${delayMs} address=${address} found=${Boolean(row)}`,
+      );
+    }
+
     if (!row) {
+      console.warn(
+        `[api/markets/sync-one] not found after retries address=${address}`,
+      );
       return NextResponse.json(
-        { ok: false, reason: "not_found", address },
+        {
+          ok: false,
+          reason: "not_found_after_retry",
+          address,
+          retries: RETRY_DELAYS_MS.length,
+        },
         { status: 404 },
       );
     }
@@ -49,6 +76,11 @@ export async function POST(request: Request) {
     if (isSupabaseConfigured()) {
       const supabase = createServiceSupabase();
       await upsertMarketRow(supabase, row);
+      console.log(`[api/markets/sync-one] upserted address=${address}`);
+    } else {
+      console.warn(
+        `[api/markets/sync-one] supabase not configured, skip upsert address=${address}`,
+      );
     }
 
     return NextResponse.json({ ok: true, market: row });
