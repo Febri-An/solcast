@@ -219,7 +219,7 @@ function startCacheSync(
         config.rpcUrl,
       );
       console.log(
-        `[cache-sync] markets skipped (${markets.reason}) | positions upsert=${positions.upserted} del=${positions.deleted} | ${durationMs}ms`,
+        `[cache-sync] markets skipped (${markets.reason}) | positions skipped (${positions.reason}) | ${durationMs}ms`,
       );
     } catch (err) {
       console.error("[cache-sync] failed:", (err as Error).message);
@@ -228,7 +228,6 @@ function startCacheSync(
     }
   };
 
-  // Run immediately on startup so the cache is warm before the first user hit.
   void tick();
   const handle = setInterval(tick, intervalMs);
   return {

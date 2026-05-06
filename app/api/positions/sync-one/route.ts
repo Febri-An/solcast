@@ -12,6 +12,12 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const RETRY_DELAYS_MS = [200, 400, 800, 1200];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchAccountBase64(
   rpcUrl: string,
   address: string,
@@ -68,11 +74,29 @@ export async function POST(request: Request) {
       market as Address,
       wallet as Address,
     );
-    const b64 = await fetchAccountBase64(SOLANA_RPC_URL, positionAddress);
+    console.log(
+      `[api/positions/sync-one] start market=${market} wallet=${wallet} pda=${positionAddress}`,
+    );
+
+    let b64 = await fetchAccountBase64(SOLANA_RPC_URL, positionAddress);
+    console.log(
+      `[api/positions/sync-one] attempt=0 pda=${positionAddress} found=${Boolean(b64)}`,
+    );
+    for (const delayMs of RETRY_DELAYS_MS) {
+      if (b64) break;
+      await sleep(delayMs);
+      b64 = await fetchAccountBase64(SOLANA_RPC_URL, positionAddress);
+      console.log(
+        `[api/positions/sync-one] retry delay_ms=${delayMs} pda=${positionAddress} found=${Boolean(b64)}`,
+      );
+    }
 
     if (!b64) {
       // No on-chain position (e.g. user never traded, or redeemed + account closed).
       // Drop any stale cache row so the client realtime subscription sees it vanish.
+      console.warn(
+        `[api/positions/sync-one] no account after retries, delete cache row if any pda=${positionAddress}`,
+      );
       if (isSupabaseConfigured()) {
         const supabase = createServiceSupabase();
         await supabase
@@ -112,6 +136,13 @@ export async function POST(request: Request) {
         { onConflict: "address" },
       );
       if (error) throw error;
+      console.log(
+        `[api/positions/sync-one] upserted pda=${positionAddress} market=${market}`,
+      );
+    } else {
+      console.warn(
+        `[api/positions/sync-one] supabase not configured, skip upsert pda=${positionAddress}`,
+      );
     }
 
     return NextResponse.json({
