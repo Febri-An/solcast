@@ -9,7 +9,11 @@ import { useWalletConnection } from "@solana/react-hooks";
 
 import { type Market } from "../generated/prediction_market";
 import { useMarketRealtime } from "../hooks/use-markets-realtime";
-import { useMarketTrading, unwrapOutcome } from "../hooks/use-market-trading";
+import {
+  TRADE_MAX_SLIPPAGE_OPTIONS,
+  useMarketTrading,
+  unwrapOutcome,
+} from "../hooks/use-market-trading";
 import { useProfile } from "../hooks/use-profile";
 import {
   resolutionCountdownTextClassName,
@@ -74,6 +78,8 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
     canRedeem,
     redeemPayout,
     isProfileComplete,
+    tradeMaxSlippageBps,
+    setTradeMaxSlippageBps,
   } = useMarketTrading(market, marketAddress, onRefresh, {
     onTradeSuccess: handleTradeSuccess,
     onRedeemSuccess: handleRedeemSuccess,
@@ -339,6 +345,28 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                       className="w-full rounded-xl border border-border-low bg-bg3 px-3 py-2.5 text-sm font-mono text-foreground outline-none placeholder:text-muted/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground-secondary mb-1.5">
+                      Max slippage cap
+                    </label>
+                    <select
+                      value={tradeMaxSlippageBps}
+                      onChange={(e) => setTradeMaxSlippageBps(Number(e.target.value))}
+                      disabled={isSending}
+                      className="w-full rounded-xl border border-border-low bg-bg3 px-3 py-2.5 text-xs text-foreground-secondary outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
+                    >
+                      {TRADE_MAX_SLIPPAGE_OPTIONS.map((opt) => (
+                        <option key={opt.bps} value={opt.bps}>
+                          {opt.label} (dynamic sizing)
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[10px] text-muted leading-relaxed">
+                      Each buy refetches pool state from RPC, computes slippage from trade size vs
+                      liquidity (capped here), then retries up to 3× if simulation says the pool moved.
+                      Raise the cap for large bets; very wide caps increase sandwich risk.
+                    </p>
+                  </div>
                   {(yesQuote || noQuote) && (
                     <div className="rounded-lg bg-bg3/60 border border-border-low px-3 py-2.5 text-[11px] space-y-1 font-mono text-foreground-secondary">
                       {yesQuote && (
@@ -358,7 +386,8 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                         </div>
                       )}
                       <p className="text-muted text-[10px] pt-1 font-sans">
-                        Fee {(market.feeBps / 100).toFixed(1)}% · slippage tolerance 1%
+                        Fee {(market.feeBps / 100).toFixed(1)}% · dynamic slippage (≤{" "}
+                        {(tradeMaxSlippageBps / 100).toFixed(1)}% cap)
                       </p>
                     </div>
                   )}

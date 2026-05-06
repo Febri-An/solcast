@@ -214,10 +214,7 @@ function startCacheSync(
     }
     running = true;
     try {
-      const { markets, positions, durationMs } = await runCacheSyncOnce(
-        supabase,
-        config.rpcUrl,
-      );
+      const { markets, positions, durationMs } = await runCacheSyncOnce();
       console.log(
         `[cache-sync] markets skipped (${markets.reason}) | positions skipped (${positions.reason}) | ${durationMs}ms`,
       );

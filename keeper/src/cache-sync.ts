@@ -25,12 +25,9 @@ export function makeSupabaseClient(
   });
 }
 
-export async function runCacheSyncOnce(
-  _supabase: SupabaseClient,
-  _rpcUrl: string,
-): Promise<{
-  markets: { skipped: true; reason: Extract<FullSyncSkippedReason, "market_full_sync_disabled"> };
-  positions: { skipped: true; reason: Extract<FullSyncSkippedReason, "positions_full_sync_disabled"> };
+export async function runCacheSyncOnce(): Promise<{
+  markets: { skipped: true; reason: "market_full_sync_disabled" };
+  positions: { skipped: true; reason: "positions_full_sync_disabled" };
   durationMs: number;
 }> {
   const start = Date.now();
