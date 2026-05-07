@@ -82,6 +82,11 @@ function MarketDetailBody({
     handleRedeem,
     canRedeem,
     redeemPayout,
+    estimatedYesExitLamports,
+    estimatedNoExitLamports,
+    netInvestedLamports,
+    realizedPnlLamports,
+    unrealizedPnlLamports,
     isProfileComplete,
     tradeMaxSlippageBps,
     setTradeMaxSlippageBps,
@@ -428,11 +433,47 @@ function MarketDetailBody({
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
                         Your position
                       </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="rounded-md border border-border-low bg-bg2/70 px-2 py-1.5">
+                          <p className="text-[10px] uppercase tracking-wide text-muted">Invested</p>
+                          <p className="text-xs font-mono text-foreground-secondary">
+                            {formatSol(netInvestedLamports)} SOL
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border-low bg-bg2/70 px-2 py-1.5">
+                          <p className="text-[10px] uppercase tracking-wide text-muted">Unrealized</p>
+                          <p
+                            className={`text-xs font-mono ${
+                              unrealizedPnlLamports >= 0n ? "text-green-text" : "text-red-text"
+                            }`}
+                          >
+                            {unrealizedPnlLamports >= 0n ? "+" : "-"}
+                            {formatSol(unrealizedPnlLamports >= 0n ? unrealizedPnlLamports : -unrealizedPnlLamports)}{" "}
+                            SOL
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border-low bg-bg2/70 px-2 py-1.5">
+                          <p className="text-[10px] uppercase tracking-wide text-muted">Realized</p>
+                          <p
+                            className={`text-xs font-mono ${
+                              realizedPnlLamports >= 0n ? "text-green-text" : "text-red-text"
+                            }`}
+                          >
+                            {realizedPnlLamports >= 0n ? "+" : "-"}
+                            {formatSol(realizedPnlLamports >= 0n ? realizedPnlLamports : -realizedPnlLamports)} SOL
+                          </p>
+                        </div>
+                      </div>
                       {userPosition.yesShares > 0n && (
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-green-text font-mono">
-                            YES {formatSol(userPosition.yesShares)}
-                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-xs text-green-text font-mono">
+                              YES {formatSol(userPosition.yesShares)} shares
+                            </span>
+                            <span className="text-[11px] text-muted font-mono">
+                              Est. exit {formatSol(estimatedYesExitLamports)} SOL
+                            </span>
+                          </div>
                           <button
                             type="button"
                             onClick={() => void handleSell(true, userPosition.yesShares)}
@@ -445,9 +486,14 @@ function MarketDetailBody({
                       )}
                       {userPosition.noShares > 0n && (
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-red-text font-mono">
-                            NO {formatSol(userPosition.noShares)}
-                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-xs text-red-text font-mono">
+                              NO {formatSol(userPosition.noShares)} shares
+                            </span>
+                            <span className="text-[11px] text-muted font-mono">
+                              Est. exit {formatSol(estimatedNoExitLamports)} SOL
+                            </span>
+                          </div>
                           <button
                             type="button"
                             onClick={() => void handleSell(false, userPosition.noShares)}

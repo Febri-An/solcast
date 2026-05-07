@@ -24,7 +24,12 @@ import { fetchMarketReservesConfirmed } from "../lib/fetch-market-reserves-clien
 import { computeDynamicSlippageBps } from "../lib/trade-slippage";
 import { isProbablySlippageExceededError } from "../lib/trade-tx-errors";
 import { LAMPORTS_PER_SOL } from "../lib/market-format";
-import { syncMarketAndPosition, syncMarketRow } from "../lib/write-through";
+import {
+  fetchPositionMetrics,
+  recordPositionFill,
+  syncMarketAndPosition,
+  syncMarketRow,
+} from "../lib/write-through";
 import { useToast } from "../components/toast";
 import { useProfile } from "./use-profile";
 import { useUserPositionRealtime } from "./use-positions-realtime";
@@ -148,11 +153,39 @@ export function useMarketTrading(
   const [isResolving, setIsResolving] = useState(false);
   const [optimisticOverlay, setOptimisticOverlay] =
     useState<OptimisticOverlay | null>(null);
+  const [yesCostBasisLamports, setYesCostBasisLamports] = useState(0n);
+  const [noCostBasisLamports, setNoCostBasisLamports] = useState(0n);
+  const [realizedPnlLamports, setRealizedPnlLamports] = useState(0n);
 
   /** Ceiling (bps) passed into `computeDynamicSlippageBps` — default 4%. */
   const [tradeMaxSlippageBps, setTradeMaxSlippageBpsState] = useState(400);
 
   const walletAddress = wallet?.account.address;
+
+  const refreshPositionMetrics = useCallback(async () => {
+    if (!walletAddress) {
+      setYesCostBasisLamports(0n);
+      setNoCostBasisLamports(0n);
+      setRealizedPnlLamports(0n);
+      return;
+    }
+    const row = await fetchPositionMetrics(walletAddress, marketAddress);
+    if (!row) {
+      setYesCostBasisLamports(0n);
+      setNoCostBasisLamports(0n);
+      setRealizedPnlLamports(0n);
+      return;
+    }
+    try {
+      setYesCostBasisLamports(BigInt(row.yes_cost_basis_lamports ?? "0"));
+      setNoCostBasisLamports(BigInt(row.no_cost_basis_lamports ?? "0"));
+      setRealizedPnlLamports(BigInt(row.realized_pnl_lamports ?? "0"));
+    } catch {
+      setYesCostBasisLamports(0n);
+      setNoCostBasisLamports(0n);
+      setRealizedPnlLamports(0n);
+    }
+  }, [walletAddress, marketAddress]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -166,6 +199,10 @@ export function useMarketTrading(
       /* ignore */
     }
   }, []);
+
+  useEffect(() => {
+    void refreshPositionMetrics();
+  }, [refreshPositionMetrics]);
 
   const setTradeMaxSlippageBps = useCallback((bps: number) => {
     setTradeMaxSlippageBpsState(bps);
@@ -310,9 +347,10 @@ export function useMarketTrading(
 
           setTxStatus("Awaiting signature...");
           showToast("Awaiting wallet signature...", { variant: "loading" });
+          let sendResult: unknown;
 
           try {
-            await send({ instructions: [instruction] });
+            sendResult = await send({ instructions: [instruction] });
           } catch (sendErr) {
             if (
               attempt < TRADE_ATTEMPTS - 1 &&
@@ -328,7 +366,18 @@ export function useMarketTrading(
             yesShares: quote.newYesShares,
             noShares: quote.newNoShares,
           });
+          const txSignature = typeof sendResult === "string" ? sendResult : undefined;
+          void recordPositionFill({
+            clientFillId: crypto.randomUUID(),
+            txSignature,
+            wallet: walletAddress,
+            market: marketAddress,
+            side: buyYes ? "buy_yes" : "buy_no",
+            sharesDelta: quote.out,
+            lamportsDelta: amount,
+          });
           void syncMarketAndPosition(marketAddress, walletAddress);
+          void refreshPositionMetrics();
           setTradeAmount("");
           setTxStatus(null);
           showToast(`Buy executed: received ${quote.out.toString()} shares.`);
@@ -355,6 +404,7 @@ export function useMarketTrading(
       onTradeSuccess,
       tradeMaxSlippageBps,
       showToast,
+      refreshPositionMetrics,
     ],
   );
 
@@ -418,9 +468,10 @@ export function useMarketTrading(
 
           setTxStatus("Awaiting signature...");
           showToast("Awaiting wallet signature...", { variant: "loading" });
+          let sendResult: unknown;
 
           try {
-            await send({ instructions: [instruction] });
+            sendResult = await send({ instructions: [instruction] });
           } catch (sendErr) {
             if (
               attempt < TRADE_ATTEMPTS - 1 &&
@@ -436,7 +487,18 @@ export function useMarketTrading(
             yesShares: quote.newYesShares,
             noShares: quote.newNoShares,
           });
+          const txSignature = typeof sendResult === "string" ? sendResult : undefined;
+          void recordPositionFill({
+            clientFillId: crypto.randomUUID(),
+            txSignature,
+            wallet: walletAddress,
+            market: marketAddress,
+            side: sellYes ? "sell_yes" : "sell_no",
+            sharesDelta: sharesIn,
+            lamportsDelta: quote.out,
+          });
           void syncMarketAndPosition(marketAddress, walletAddress);
+          void refreshPositionMetrics();
           setTxStatus(null);
           showToast(`Sell executed: received ${quote.out.toString()} lamports.`);
           onTradeSuccess?.();
@@ -460,6 +522,7 @@ export function useMarketTrading(
       onTradeSuccess,
       tradeMaxSlippageBps,
       showToast,
+      refreshPositionMetrics,
     ],
   );
 
@@ -549,6 +612,35 @@ export function useMarketTrading(
     return outcome ? userPosition.yesShares : userPosition.noShares;
   }, [isResolved, userPosition, market.outcome]);
 
+  /** Estimated SOL out if user sells all YES shares at current pool state. */
+  const estimatedYesExitLamports = useMemo(() => {
+    if (!userPosition || userPosition.yesShares <= 0n) return 0n;
+    const q = quoteSell(yesShares, noShares, userPosition.yesShares, true);
+    return isTradeError(q) ? 0n : q.out;
+  }, [userPosition, yesShares, noShares]);
+
+  /** Estimated SOL out if user sells all NO shares at current pool state. */
+  const estimatedNoExitLamports = useMemo(() => {
+    if (!userPosition || userPosition.noShares <= 0n) return 0n;
+    const q = quoteSell(yesShares, noShares, userPosition.noShares, false);
+    return isTradeError(q) ? 0n : q.out;
+  }, [userPosition, yesShares, noShares]);
+
+  const netInvestedLamports = useMemo(
+    () => yesCostBasisLamports + noCostBasisLamports,
+    [yesCostBasisLamports, noCostBasisLamports],
+  );
+
+  const estimatedExitLamports = useMemo(
+    () => estimatedYesExitLamports + estimatedNoExitLamports,
+    [estimatedYesExitLamports, estimatedNoExitLamports],
+  );
+
+  const unrealizedPnlLamports = useMemo(
+    () => estimatedExitLamports - netInvestedLamports,
+    [estimatedExitLamports, netInvestedLamports],
+  );
+
   return {
     wallet,
     status,
@@ -577,6 +669,13 @@ export function useMarketTrading(
     handleRedeem,
     canRedeem,
     redeemPayout,
+    estimatedYesExitLamports,
+    estimatedNoExitLamports,
+    yesCostBasisLamports,
+    noCostBasisLamports,
+    netInvestedLamports,
+    realizedPnlLamports,
+    unrealizedPnlLamports,
     isProfileComplete,
   };
 }
