@@ -171,6 +171,7 @@ export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps):
               <MarketCard
                 market={item.market}
                 marketAddress={item.address}
+                vaultLamports={item.vaultLamports}
                 onUpdate={fetchMarkets}
                 nowSec={nowSec}
                 density="grid"
@@ -186,6 +187,7 @@ export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps):
               key={item.address}
               market={item.market}
               marketAddress={item.address}
+              vaultLamports={item.vaultLamports}
               onUpdate={fetchMarkets}
               nowSec={nowSec}
             />

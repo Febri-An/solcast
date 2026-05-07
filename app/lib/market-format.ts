@@ -14,6 +14,11 @@ export function formatVolume(lamports: bigint): string {
   return sol.toFixed(4);
 }
 
+export function formatMarketVaultSolDisplay(lamports: bigint | null | undefined): string {
+  if (lamports === undefined || lamports === null) return "—";
+  return formatVolume(lamports);
+}
+
 export function getTimeRemaining(resolutionTime: number): string {
   const now = Date.now() / 1000;
   const diff = resolutionTime - now;

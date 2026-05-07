@@ -198,8 +198,6 @@ export function useMarketTrading(
   const yesShares = optimisticOverlay?.yesShares ?? market.yesShares;
   const noShares = optimisticOverlay?.noShares ?? market.noShares;
   const feeBps = market.feeBps;
-  /** Total virtual TVL of the market pool, roughly tracks SOL volume. */
-  const totalShares = yesShares + noShares;
 
   // Clear the optimistic overlay whenever the authoritative market state
   // changes — i.e. the realtime push / refresh has landed, so we now have
@@ -569,7 +567,6 @@ export function useMarketTrading(
     canResolve,
     yesShares,
     noShares,
-    totalShares,
     yesBps,
     yesPercent,
     noPercent,

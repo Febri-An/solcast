@@ -83,7 +83,14 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, market: row });
+    return NextResponse.json({
+      ok: true,
+      market: {
+        address: row.address,
+        accountDataBase64: row.accountDataBase64,
+        vaultLamports: row.vaultLamports?.toString() ?? null,
+      },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Sync failed";
     console.error("[api/markets/sync-one]", e);

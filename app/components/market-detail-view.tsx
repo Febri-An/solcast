@@ -21,8 +21,8 @@ import {
 } from "../hooks/use-resolution-countdown";
 import {
   formatMarketTargetUsd,
+  formatMarketVaultSolDisplay,
   formatSol,
-  formatVolume,
 } from "../lib/market-format";
 import { getAssetLabelForFeed, getTradingViewSymbolForFeed } from "../lib/price-feeds";
 import { TradingViewChart } from "./tradingview-chart";
@@ -39,10 +39,16 @@ interface MarketDetailViewProps {
 interface MarketDetailBodyProps {
   market: Market;
   marketAddress: Address;
+  vaultLamports: bigint | null;
   onRefresh: () => void;
 }
 
-function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBodyProps): ReactNode {
+function MarketDetailBody({
+  market,
+  marketAddress,
+  vaultLamports,
+  onRefresh,
+}: MarketDetailBodyProps): ReactNode {
   const { status } = useWalletConnection();
   const { openProfileModal, configured: profileConfigured } = useProfile();
   const { showToast } = useToast();
@@ -66,7 +72,6 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
     resolutionTime,
     canTrade: canTradeMarket,
     canResolve,
-    totalShares,
     yesPercent,
     noPercent,
     userPosition,
@@ -123,7 +128,10 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
             <span className="rounded-full bg-bg3 border border-border-low px-2.5 py-0.5 text-xs font-medium text-foreground-secondary">
               {assetLabel}
             </span>
-            <span className="flex items-center gap-1">
+            <span
+              className="flex items-center gap-1"
+              title="Gross SOL on market account (vault, includes rent). Not the YES+NO reserve sum."
+            >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
@@ -132,7 +140,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                   d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 10v1"
                 />
               </svg>
-              {formatVolume(totalShares)} vol.
+              {formatMarketVaultSolDisplay(vaultLamports)} SOL vault
             </span>
             {!isResolved && (
               <span className="flex items-center gap-1">
@@ -528,7 +536,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
 }
 
 export function MarketDetailView({ marketAddress }: MarketDetailViewProps): ReactNode {
-  const { market, loading, error, refresh } = useMarketRealtime(marketAddress);
+  const { market, vaultLamports, loading, error, refresh } = useMarketRealtime(marketAddress);
 
   const loadMarket = useCallback(async () => {
     await refresh();
@@ -555,5 +563,12 @@ export function MarketDetailView({ marketAddress }: MarketDetailViewProps): Reac
     );
   }
 
-  return <MarketDetailBody market={market} marketAddress={marketAddress} onRefresh={loadMarket} />;
+  return (
+    <MarketDetailBody
+      market={market}
+      marketAddress={marketAddress}
+      vaultLamports={vaultLamports}
+      onRefresh={loadMarket}
+    />
+  );
 }

@@ -20,7 +20,14 @@ export async function GET() {
     const rows = await readMarketsCache(supabase);
 
     return NextResponse.json(
-      { source: "cache", markets: rows },
+      {
+        source: "cache",
+        markets: rows.map((r) => ({
+          address: r.address,
+          accountDataBase64: r.accountDataBase64,
+          vaultLamports: r.vaultLamports?.toString() ?? null,
+        })),
+      },
       {
         headers: {
           "Cache-Control": "private, max-age=0, must-revalidate",
