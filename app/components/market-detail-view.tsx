@@ -23,8 +23,12 @@ import {
   formatMarketTargetUsd,
   formatMarketVaultSolDisplay,
   formatSol,
+  isShortLiveWindowMarket,
+  marketTargetUsdAsNumber,
 } from "../lib/market-format";
 import { getAssetLabelForFeed, getTradingViewSymbolForFeed } from "../lib/price-feeds";
+import { usePythShortMarketPriceSeries } from "../hooks/use-pyth-short-market-price-series";
+import { RealtimeOraclePriceChart } from "./realtime-oracle-price-chart";
 import { TradingViewChart } from "./tradingview-chart";
 import { ProbabilityHistoryChart } from "./probability-history-chart";
 import { ProbabilityPercent } from "./probability-percent";
@@ -110,6 +114,15 @@ function MarketDetailBody({
 
   const tvSymbol = getTradingViewSymbolForFeed(market.feedId);
   const assetLabel = getAssetLabelForFeed(market.feedId);
+  const isShortLiveWindow = isShortLiveWindowMarket(market);
+  const pythShortSeries = usePythShortMarketPriceSeries({
+    enabled: isShortLiveWindow && tab === "chart",
+    feedId: market.feedId,
+    marketId: market.marketId,
+    resolutionTime: market.resolutionTime,
+    isResolved,
+  });
+  const strikeUsd = marketTargetUsdAsNumber(market.targetPrice, market.targetPriceEncoding);
   const outcome = unwrapOutcome(market.outcome);
   const shortAddr = `${marketAddress.slice(0, 4)}…${marketAddress.slice(-4)}`;
 
@@ -243,7 +256,15 @@ function MarketDetailBody({
               <div>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <p className="text-xs text-muted">
-                    Live chart via TradingView — {tvSymbol.replace(":", " · ")}
+                    {isShortLiveWindow ? (
+                      <>
+                        Pyth oracle (Hermes) — line updates in real time, stops at resolution
+                      </>
+                    ) : (
+                      <>
+                        Live chart via TradingView — {tvSymbol.replace(":", " · ")}
+                      </>
+                    )}
                   </p>
                   <button
                     type="button"
@@ -253,7 +274,19 @@ function MarketDetailBody({
                     Refresh data
                   </button>
                 </div>
-                <TradingViewChart symbol={tvSymbol} height={440} />
+                {isShortLiveWindow ? (
+                  <RealtimeOraclePriceChart
+                    assetLabel={assetLabel}
+                    points={pythShortSeries.points}
+                    targetUsd={strikeUsd}
+                    status={pythShortSeries.status}
+                    error={pythShortSeries.error}
+                    lastPrice={pythShortSeries.lastPrice}
+                    resolutionTimeSec={resolutionTime}
+                  />
+                ) : (
+                  <TradingViewChart symbol={tvSymbol} height={440} />
+                )}
               </div>
               <ProbabilityHistoryChart
                 marketAddress={marketAddress}

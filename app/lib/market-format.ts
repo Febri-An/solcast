@@ -124,6 +124,17 @@ export function formatMarketTargetUsd(
   });
 }
 
+/** Strike in USD as a number (for charts / comparisons). */
+export function marketTargetUsdAsNumber(
+  targetPrice: bigint,
+  targetPriceEncoding: number,
+): number {
+  if (targetPriceEncoding === TARGET_PRICE_ENCODING_NANODOLLARS) {
+    return Number(targetPrice) / 1e9;
+  }
+  return Number(targetPrice);
+}
+
 /** Open for betting: not resolved and before resolution time. Pass `nowSec` when grouping lists so tabs stay accurate between refreshes. */
 export function isOpenForBetting(
   market: { resolved: boolean; resolutionTime: bigint },
