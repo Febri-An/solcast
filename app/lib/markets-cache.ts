@@ -15,7 +15,18 @@ export const MARKET_DISCRIMINATOR_BASE58 = "dkokXHR3DTw";
 export type RpcMarketRow = {
   address: string;
   accountDataBase64: string;
+  vaultLamports?: bigint | null;
 };
+
+/** Parse Postgres / JSON bigint cell into bigint (null-safe). */
+export function vaultLamportsFromDb(value: unknown): bigint | null {
+  if (value === null || value === undefined || value === "") return null;
+  try {
+    return BigInt(typeof value === "string" ? value : String(value));
+  } catch {
+    return null;
+  }
+}
 
 export async function fetchMarketsFromRpc(rpcUrl: string): Promise<RpcMarketRow[]> {
   const response = await fetch(rpcUrl, {
@@ -45,7 +56,10 @@ export async function fetchMarketsFromRpc(rpcUrl: string): Promise<RpcMarketRow[
 
   const result = (await response.json()) as {
     error?: { message: string };
-    result?: Array<{ pubkey: string; account: { data: [string, string] } }>;
+    result?: Array<{
+      pubkey: string;
+      account: { lamports?: number; data: [string, string] };
+    }>;
   };
 
   if (result.error) {
@@ -56,7 +70,15 @@ export async function fetchMarketsFromRpc(rpcUrl: string): Promise<RpcMarketRow[
   for (const account of result.result ?? []) {
     const b64 = account.account.data[0];
     if (!b64) continue;
-    out.push({ address: account.pubkey, accountDataBase64: b64 });
+    const lamports = account.account.lamports;
+    out.push({
+      address: account.pubkey,
+      accountDataBase64: b64,
+      vaultLamports:
+        typeof lamports === "number" && Number.isFinite(lamports)
+          ? BigInt(lamports)
+          : null,
+    });
   }
   return out;
 }
@@ -70,13 +92,14 @@ export function decodeMarketRow(row: RpcMarketRow): { address: Address; market: 
 export async function readMarketsCache(supabase: SupabaseClient): Promise<RpcMarketRow[]> {
   const { data, error } = await supabase
     .from("markets_cache")
-    .select("address, account_data_base64")
+    .select("address, account_data_base64, vault_lamports")
     .order("updated_at", { ascending: false });
 
   if (error) throw error;
   return (data ?? []).map((r) => ({
     address: r.address as string,
     accountDataBase64: r.account_data_base64 as string,
+    vaultLamports: vaultLamportsFromDb((r as { vault_lamports?: unknown }).vault_lamports),
   }));
 }
 
@@ -86,7 +109,7 @@ export async function readMarketFromCache(
 ): Promise<RpcMarketRow | null> {
   const { data, error } = await supabase
     .from("markets_cache")
-    .select("address, account_data_base64")
+    .select("address, account_data_base64, vault_lamports")
     .eq("address", address)
     .maybeSingle();
 
@@ -95,6 +118,7 @@ export async function readMarketFromCache(
   return {
     address: data.address as string,
     accountDataBase64: data.account_data_base64 as string,
+    vaultLamports: vaultLamportsFromDb((data as { vault_lamports?: unknown }).vault_lamports),
   };
 }
 
@@ -115,15 +139,19 @@ export async function fetchMarketFromRpc(
 
   const result = (await response.json()) as {
     error?: { message: string };
-    result?: { value: { data: [string, string] } | null };
+    result?: { value: { lamports?: number; data: [string, string] } | null };
   };
 
   if (result.error) {
     throw new Error(result.error.message);
   }
-  const b64 = result.result?.value?.data?.[0];
+  const val = result.result?.value;
+  const b64 = val?.data?.[0];
   if (!b64) return null;
-  return { address, accountDataBase64: b64 };
+  const lamports = val?.lamports;
+  const vaultLamports =
+    typeof lamports === "number" && Number.isFinite(lamports) ? BigInt(lamports) : null;
+  return { address, accountDataBase64: b64, vaultLamports };
 }
 
 /** Anchor point when odds are unchanged — avoids spamming identical rows every keeper tick. */
@@ -189,6 +217,10 @@ export async function upsertMarketRow(
     {
       address: row.address,
       account_data_base64: row.accountDataBase64,
+      vault_lamports:
+        row.vaultLamports === undefined || row.vaultLamports === null
+          ? null
+          : row.vaultLamports.toString(),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "address" },
@@ -213,6 +245,10 @@ export async function syncMarketsCache(
       rows.map((r) => ({
         address: r.address,
         account_data_base64: r.accountDataBase64,
+        vault_lamports:
+          r.vaultLamports === undefined || r.vaultLamports === null
+            ? null
+            : r.vaultLamports.toString(),
         updated_at: now,
       })),
       { onConflict: "address" },

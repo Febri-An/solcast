@@ -9,7 +9,11 @@ import { useWalletConnection } from "@solana/react-hooks";
 
 import { type Market } from "../generated/prediction_market";
 import { useMarketRealtime } from "../hooks/use-markets-realtime";
-import { useMarketTrading, unwrapOutcome } from "../hooks/use-market-trading";
+import {
+  TRADE_MAX_SLIPPAGE_OPTIONS,
+  useMarketTrading,
+  unwrapOutcome,
+} from "../hooks/use-market-trading";
 import { useProfile } from "../hooks/use-profile";
 import {
   resolutionCountdownTextClassName,
@@ -17,10 +21,14 @@ import {
 } from "../hooks/use-resolution-countdown";
 import {
   formatMarketTargetUsd,
+  formatMarketVaultSolDisplay,
   formatSol,
-  formatVolume,
+  isShortLiveWindowMarket,
+  marketTargetUsdAsNumber,
 } from "../lib/market-format";
 import { getAssetLabelForFeed, getTradingViewSymbolForFeed } from "../lib/price-feeds";
+import { usePythShortMarketPriceSeries } from "../hooks/use-pyth-short-market-price-series";
+import { RealtimeOraclePriceChart } from "./realtime-oracle-price-chart";
 import { TradingViewChart } from "./tradingview-chart";
 import { ProbabilityHistoryChart } from "./probability-history-chart";
 import { ProbabilityPercent } from "./probability-percent";
@@ -35,10 +43,16 @@ interface MarketDetailViewProps {
 interface MarketDetailBodyProps {
   market: Market;
   marketAddress: Address;
+  vaultLamports: bigint | null;
   onRefresh: () => void;
 }
 
-function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBodyProps): ReactNode {
+function MarketDetailBody({
+  market,
+  marketAddress,
+  vaultLamports,
+  onRefresh,
+}: MarketDetailBodyProps): ReactNode {
   const { status } = useWalletConnection();
   const { openProfileModal, configured: profileConfigured } = useProfile();
   const { showToast } = useToast();
@@ -62,7 +76,6 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
     resolutionTime,
     canTrade: canTradeMarket,
     canResolve,
-    totalShares,
     yesPercent,
     noPercent,
     userPosition,
@@ -73,7 +86,15 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
     handleRedeem,
     canRedeem,
     redeemPayout,
+    estimatedYesExitLamports,
+    estimatedNoExitLamports,
+    netInvestedLamports,
+    realizedPnlLamports,
+    unrealizedPnlLamports,
+    isCostBasisIncomplete,
     isProfileComplete,
+    tradeMaxSlippageBps,
+    setTradeMaxSlippageBps,
   } = useMarketTrading(market, marketAddress, onRefresh, {
     onTradeSuccess: handleTradeSuccess,
     onRedeemSuccess: handleRedeemSuccess,
@@ -93,6 +114,15 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
 
   const tvSymbol = getTradingViewSymbolForFeed(market.feedId);
   const assetLabel = getAssetLabelForFeed(market.feedId);
+  const isShortLiveWindow = isShortLiveWindowMarket(market);
+  const pythShortSeries = usePythShortMarketPriceSeries({
+    enabled: isShortLiveWindow && tab === "chart",
+    feedId: market.feedId,
+    marketId: market.marketId,
+    resolutionTime: market.resolutionTime,
+    isResolved,
+  });
+  const strikeUsd = marketTargetUsdAsNumber(market.targetPrice, market.targetPriceEncoding);
   const outcome = unwrapOutcome(market.outcome);
   const shortAddr = `${marketAddress.slice(0, 4)}…${marketAddress.slice(-4)}`;
 
@@ -117,7 +147,10 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
             <span className="rounded-full bg-bg3 border border-border-low px-2.5 py-0.5 text-xs font-medium text-foreground-secondary">
               {assetLabel}
             </span>
-            <span className="flex items-center gap-1">
+            <span
+              className="flex items-center gap-1"
+              title="Gross SOL on market account (vault, includes rent). Not the YES+NO reserve sum."
+            >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
@@ -126,7 +159,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                   d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 10v1"
                 />
               </svg>
-              {formatVolume(totalShares)} vol.
+              {formatMarketVaultSolDisplay(vaultLamports)} SOL vault
             </span>
             {!isResolved && (
               <span className="flex items-center gap-1">
@@ -223,7 +256,15 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
               <div>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <p className="text-xs text-muted">
-                    Live chart via TradingView — {tvSymbol.replace(":", " · ")}
+                    {isShortLiveWindow ? (
+                      <>
+                        Pyth oracle (Hermes) — line updates in real time, stops at resolution
+                      </>
+                    ) : (
+                      <>
+                        Live chart via TradingView — {tvSymbol.replace(":", " · ")}
+                      </>
+                    )}
                   </p>
                   <button
                     type="button"
@@ -233,7 +274,19 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                     Refresh data
                   </button>
                 </div>
-                <TradingViewChart symbol={tvSymbol} height={440} />
+                {isShortLiveWindow ? (
+                  <RealtimeOraclePriceChart
+                    assetLabel={assetLabel}
+                    points={pythShortSeries.points}
+                    targetUsd={strikeUsd}
+                    status={pythShortSeries.status}
+                    error={pythShortSeries.error}
+                    lastPrice={pythShortSeries.lastPrice}
+                    resolutionTimeSec={resolutionTime}
+                  />
+                ) : (
+                  <TradingViewChart symbol={tvSymbol} height={440} />
+                )}
               </div>
               <ProbabilityHistoryChart
                 marketAddress={marketAddress}
@@ -339,6 +392,28 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                       className="w-full rounded-xl border border-border-low bg-bg3 px-3 py-2.5 text-sm font-mono text-foreground outline-none placeholder:text-muted/50 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground-secondary mb-1.5">
+                      Max slippage cap
+                    </label>
+                    <select
+                      value={tradeMaxSlippageBps}
+                      onChange={(e) => setTradeMaxSlippageBps(Number(e.target.value))}
+                      disabled={isSending}
+                      className="w-full rounded-xl border border-border-low bg-bg3 px-3 py-2.5 text-xs text-foreground-secondary outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-60"
+                    >
+                      {TRADE_MAX_SLIPPAGE_OPTIONS.map((opt) => (
+                        <option key={opt.bps} value={opt.bps}>
+                          {opt.label} (dynamic sizing)
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[10px] text-muted leading-relaxed">
+                      Each buy refetches pool state from RPC, computes slippage from trade size vs
+                      liquidity (capped here), then retries up to 3× if simulation says the pool moved.
+                      Raise the cap for large bets; very wide caps increase sandwich risk.
+                    </p>
+                  </div>
                   {(yesQuote || noQuote) && (
                     <div className="rounded-lg bg-bg3/60 border border-border-low px-3 py-2.5 text-[11px] space-y-1 font-mono text-foreground-secondary">
                       {yesQuote && (
@@ -358,7 +433,8 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                         </div>
                       )}
                       <p className="text-muted text-[10px] pt-1 font-sans">
-                        Fee {(market.feeBps / 100).toFixed(1)}% · slippage tolerance 1%
+                        Fee {(market.feeBps / 100).toFixed(1)}% · dynamic slippage (≤{" "}
+                        {(tradeMaxSlippageBps / 100).toFixed(1)}% cap)
                       </p>
                     </div>
                   )}
@@ -391,11 +467,55 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
                         Your position
                       </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="rounded-md border border-border-low bg-bg2/70 px-2 py-1.5">
+                          <p className="text-[10px] uppercase tracking-wide text-muted">Invested</p>
+                          <p className="text-xs font-mono text-foreground-secondary">
+                            {formatSol(netInvestedLamports)} SOL
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border-low bg-bg2/70 px-2 py-1.5">
+                          <p className="text-[10px] uppercase tracking-wide text-muted">Unrealized</p>
+                          <p
+                            className={`text-xs font-mono ${
+                              unrealizedPnlLamports >= 0n ? "text-green-text" : "text-red-text"
+                            }`}
+                          >
+                            {unrealizedPnlLamports >= 0n ? "+" : "-"}
+                            {formatSol(unrealizedPnlLamports >= 0n ? unrealizedPnlLamports : -unrealizedPnlLamports)}{" "}
+                            SOL
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border-low bg-bg2/70 px-2 py-1.5">
+                          <p className="text-[10px] uppercase tracking-wide text-muted">Realized</p>
+                          <p
+                            className={`text-xs font-mono ${
+                              realizedPnlLamports >= 0n ? "text-green-text" : "text-red-text"
+                            }`}
+                          >
+                            {realizedPnlLamports >= 0n ? "+" : "-"}
+                            {formatSol(realizedPnlLamports >= 0n ? realizedPnlLamports : -realizedPnlLamports)} SOL
+                          </p>
+                        </div>
+                      </div>
+                      {isCostBasisIncomplete && (
+                        <p className="text-[10px] text-amber-text/90 leading-snug rounded-md bg-amber-muted/30 border border-amber/20 px-2 py-1.5">
+                          Invested and unrealized require cost basis recorded after trades (Supabase{" "}
+                          <code className="text-[10px]">position_metrics</code>). If invested stays zero,
+                          check env keys and migrations — until then unrealized equals exit value, not true
+                          profit.
+                        </p>
+                      )}
                       {userPosition.yesShares > 0n && (
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-green-text font-mono">
-                            YES {formatSol(userPosition.yesShares)}
-                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-xs text-green-text font-mono">
+                              YES {formatSol(userPosition.yesShares)} shares
+                            </span>
+                            <span className="text-[11px] text-muted font-mono">
+                              Est. exit {formatSol(estimatedYesExitLamports)} SOL
+                            </span>
+                          </div>
                           <button
                             type="button"
                             onClick={() => void handleSell(true, userPosition.yesShares)}
@@ -408,9 +528,14 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
                       )}
                       {userPosition.noShares > 0n && (
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-red-text font-mono">
-                            NO {formatSol(userPosition.noShares)}
-                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-xs text-red-text font-mono">
+                              NO {formatSol(userPosition.noShares)} shares
+                            </span>
+                            <span className="text-[11px] text-muted font-mono">
+                              Est. exit {formatSol(estimatedNoExitLamports)} SOL
+                            </span>
+                          </div>
                           <button
                             type="button"
                             onClick={() => void handleSell(false, userPosition.noShares)}
@@ -499,7 +624,7 @@ function MarketDetailBody({ market, marketAddress, onRefresh }: MarketDetailBody
 }
 
 export function MarketDetailView({ marketAddress }: MarketDetailViewProps): ReactNode {
-  const { market, loading, error, refresh } = useMarketRealtime(marketAddress);
+  const { market, vaultLamports, loading, error, refresh } = useMarketRealtime(marketAddress);
 
   const loadMarket = useCallback(async () => {
     await refresh();
@@ -526,5 +651,12 @@ export function MarketDetailView({ marketAddress }: MarketDetailViewProps): Reac
     );
   }
 
-  return <MarketDetailBody market={market} marketAddress={marketAddress} onRefresh={loadMarket} />;
+  return (
+    <MarketDetailBody
+      market={market}
+      marketAddress={marketAddress}
+      vaultLamports={vaultLamports}
+      onRefresh={loadMarket}
+    />
+  );
 }

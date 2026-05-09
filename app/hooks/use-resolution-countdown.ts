@@ -10,6 +10,12 @@ export type ResolutionCountdownUrgency = "normal" | "soon" | "critical" | "ended
 const ONE_HOUR_SEC = 3600;
 const FIVE_MIN_SEC = 300;
 
+export type ResolutionCountdownState = {
+  label: string;
+  remainingSec: number;
+  urgency: ResolutionCountdownUrgency;
+};
+
 export function resolutionCountdownTextClassName(
   urgency: ResolutionCountdownUrgency,
 ): string {
@@ -32,11 +38,7 @@ export function resolutionCountdownTextClassName(
 export function useResolutionCountdown(
   resolutionTimeSec: number,
   active: boolean,
-): {
-  label: string;
-  remainingSec: number;
-  urgency: ResolutionCountdownUrgency;
-} {
+): ResolutionCountdownState {
   const [nowSec, setNowSec] = useState(() => Date.now() / 1000);
 
   useEffect(() => {
@@ -49,28 +51,37 @@ export function useResolutionCountdown(
     return () => clearInterval(id);
   }, [active]);
 
-  return useMemo(() => {
-    const remainingSec = Math.max(0, resolutionTimeSec - nowSec);
-    const label = formatResolutionCountdownRemaining(resolutionTimeSec - nowSec);
+  return useMemo(
+    () => getResolutionCountdownState(resolutionTimeSec, nowSec, active),
+    [active, resolutionTimeSec, nowSec],
+  );
+}
 
-    if (!active) {
-      const urgency: ResolutionCountdownUrgency =
-        remainingSec <= 0 ? "ended" : "normal";
-      return { label, remainingSec, urgency };
-    }
+export function getResolutionCountdownState(
+  resolutionTimeSec: number,
+  nowSec: number,
+  active: boolean,
+): ResolutionCountdownState {
+  const remainingSec = Math.max(0, resolutionTimeSec - nowSec);
+  const label = formatResolutionCountdownRemaining(resolutionTimeSec - nowSec);
 
-    if (remainingSec <= 0) {
-      return {
-        label: "Ended",
-        remainingSec: 0,
-        urgency: "ended",
-      };
-    }
-
-    let urgency: ResolutionCountdownUrgency = "normal";
-    if (remainingSec < FIVE_MIN_SEC) urgency = "critical";
-    else if (remainingSec < ONE_HOUR_SEC) urgency = "soon";
-
+  if (!active) {
+    const urgency: ResolutionCountdownUrgency =
+      remainingSec <= 0 ? "ended" : "normal";
     return { label, remainingSec, urgency };
-  }, [active, resolutionTimeSec, nowSec]);
+  }
+
+  if (remainingSec <= 0) {
+    return {
+      label: "Ended",
+      remainingSec: 0,
+      urgency: "ended",
+    };
+  }
+
+  let urgency: ResolutionCountdownUrgency = "normal";
+  if (remainingSec < FIVE_MIN_SEC) urgency = "critical";
+  else if (remainingSec < ONE_HOUR_SEC) urgency = "soon";
+
+  return { label, remainingSec, urgency };
 }

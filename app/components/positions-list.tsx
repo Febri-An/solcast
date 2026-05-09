@@ -46,18 +46,25 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
   const {
     positions: rawPositions,
     markets: marketMap,
+    marketVaults,
     loading,
     error,
     refresh: fetchPositions,
   } = usePositionsRealtime(walletAddress);
 
   const positions = useMemo<PositionWithMarket[]>(() => {
-    const enriched = rawPositions.map((p) => ({
-      positionAddress: p.positionAddress,
-      position: p.position,
-      marketAddress: p.marketAddress,
-      market: marketMap.get(p.marketAddress) ?? null,
-    }));
+    const enriched = rawPositions
+      .map((p) => ({
+        positionAddress: p.positionAddress,
+        position: p.position,
+        marketAddress: p.marketAddress,
+        market: marketMap.get(p.marketAddress) ?? null,
+      }))
+      .filter(({ position, market }) => {
+        const held = position.yesShares + position.noShares;
+        if (held === 0n && market && !market.resolved) return false;
+        return true;
+      });
     enriched.sort((a, b) => {
       const aTime = a.market?.resolutionTime ?? 0n;
       const bTime = b.market?.resolutionTime ?? 0n;
@@ -254,6 +261,7 @@ export function PositionsList({ walletAddress }: PositionsListProps): ReactNode 
                 positionAddress={item.positionAddress}
                 market={item.market}
                 marketAddress={item.marketAddress}
+                vaultLamports={marketVaults.get(item.marketAddress) ?? null}
                 onUpdate={fetchPositions}
                 animationDelay={index * 50}
               />

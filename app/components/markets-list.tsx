@@ -1,12 +1,12 @@
 "use client";
 
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { useMarketsRealtime, type MarketWithAddress } from "../hooks/use-markets-realtime";
 import { isOpenForBetting } from "../lib/market-format";
 import { MarketCard } from "./market-card";
 
-export type MarketsFilterTab = "active" | "pending" | "past";
+export type MarketsFilterTab = "active" | "past";
 
 interface MarketsListProps {
   activeTab: MarketsFilterTab;
@@ -15,6 +15,12 @@ interface MarketsListProps {
 
 export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps): ReactNode {
   const { markets: rawMarkets, loading, error, refresh } = useMarketsRealtime();
+
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const id = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const markets = useMemo<MarketWithAddress[]>(
     () =>
@@ -26,34 +32,25 @@ export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps):
 
   const fetchMarkets = refresh;
 
-  const { bettingMarkets, pendingResolveMarkets, pastMarkets } = useMemo(() => {
+  const { bettingMarkets, pastMarkets } = useMemo(() => {
     const betting: MarketWithAddress[] = [];
-    const pending: MarketWithAddress[] = [];
     const past: MarketWithAddress[] = [];
 
     for (const item of markets) {
       if (item.market.resolved) {
         past.push(item);
-      } else if (isOpenForBetting(item.market)) {
+      } else if (isOpenForBetting(item.market, nowSec)) {
         betting.push(item);
-      } else {
-        pending.push(item);
       }
     }
 
     betting.sort((a, b) => Number(a.market.resolutionTime - b.market.resolutionTime));
-    pending.sort((a, b) => Number(a.market.resolutionTime - b.market.resolutionTime));
     past.sort((a, b) => Number(b.market.resolutionTime - a.market.resolutionTime));
 
-    return { bettingMarkets: betting, pendingResolveMarkets: pending, pastMarkets: past };
-  }, [markets]);
+    return { bettingMarkets: betting, pastMarkets: past };
+  }, [markets, nowSec]);
 
-  const displayedMarkets =
-    activeTab === "active"
-      ? bettingMarkets
-      : activeTab === "pending"
-        ? pendingResolveMarkets
-        : pastMarkets;
+  const displayedMarkets = activeTab === "active" ? bettingMarkets : pastMarkets;
 
   if (loading && markets.length === 0) {
     return (
@@ -131,21 +128,6 @@ export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps):
             )}
           </button>
           <button
-            onClick={() => onActiveTabChange("pending")}
-            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
-              activeTab === "pending"
-                ? "!cursor-default bg-bg3 text-foreground shadow-sm"
-                : "text-muted hover:text-foreground-secondary"
-            }`}
-          >
-            Pending resolve
-            {pendingResolveMarkets.length > 0 && (
-              <span className={`ml-1.5 text-xs ${activeTab === "pending" ? "text-foreground-secondary" : "text-muted"}`}>
-                {pendingResolveMarkets.length}
-              </span>
-            )}
-          </button>
-          <button
             onClick={() => onActiveTabChange("past")}
             className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               activeTab === "past"
@@ -179,19 +161,19 @@ export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps):
           <p className="text-sm text-muted">
             {activeTab === "active"
               ? "No active markets. Create one to get started!"
-              : activeTab === "pending"
-                ? "No markets awaiting resolution."
-                : "No resolved markets yet."}
+              : "No resolved markets yet."}
           </p>
         </div>
-      ) : activeTab === "active" || activeTab === "pending" ? (
+      ) : activeTab === "active" ? (
         <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {displayedMarkets.map((item) => (
             <div key={item.address} className="min-w-0 flex flex-col">
               <MarketCard
                 market={item.market}
                 marketAddress={item.address}
+                vaultLamports={item.vaultLamports}
                 onUpdate={fetchMarkets}
+                nowSec={nowSec}
                 density="grid"
                 className="h-full min-h-0"
               />
@@ -205,7 +187,9 @@ export function MarketsList({ activeTab, onActiveTabChange }: MarketsListProps):
               key={item.address}
               market={item.market}
               marketAddress={item.address}
+              vaultLamports={item.vaultLamports}
               onUpdate={fetchMarkets}
+              nowSec={nowSec}
             />
           ))}
         </div>

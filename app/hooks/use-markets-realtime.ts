@@ -22,17 +22,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { type Address } from "@solana/kit";
 
 import { getMarketDecoder, type Market } from "../generated/prediction_market";
+import { vaultLamportsFromDb } from "../lib/markets-cache";
 import { getBrowserSupabase, isBrowserSupabaseConfigured } from "../lib/supabase/browser";
 
 export interface MarketWithAddress {
   address: Address;
   market: Market;
+  /** Gross lamports on the market PDA when cached from RPC (`vault_lamports`). */
+  vaultLamports: bigint | null;
 }
 
 /** Row shape in `markets_cache`. */
 interface MarketsCacheRow {
   address: string;
   account_data_base64: string;
+  vault_lamports?: unknown;
 }
 
 /** Fallback polling when realtime / Supabase env is missing. */
@@ -43,9 +47,12 @@ function decodeRow(row: MarketsCacheRow): MarketWithAddress | null {
     const bytes = Uint8Array.from(atob(row.account_data_base64), (c) =>
       c.charCodeAt(0),
     );
+    const vaultRaw =
+      row.vault_lamports !== undefined ? row.vault_lamports : null;
     return {
       address: row.address as Address,
       market: getMarketDecoder().decode(bytes),
+      vaultLamports: vaultLamportsFromDb(vaultRaw),
     };
   } catch (err) {
     console.warn("[markets-realtime] decode failed:", row.address, err);
@@ -80,7 +87,7 @@ export function useMarketsRealtime(): UseMarketsRealtimeResult {
       if (supabase) {
         const { data, error: selErr } = await supabase
           .from("markets_cache")
-          .select("address, account_data_base64");
+          .select("address, account_data_base64, vault_lamports");
         if (selErr) throw selErr;
 
         const next = new Map<string, MarketWithAddress>();
@@ -97,13 +104,18 @@ export function useMarketsRealtime(): UseMarketsRealtimeResult {
           throw new Error(`HTTP ${response.status}`);
         }
         const payload = (await response.json()) as {
-          markets: Array<{ address: string; accountDataBase64: string }>;
+          markets: Array<{
+            address: string;
+            accountDataBase64: string;
+            vaultLamports?: string | null;
+          }>;
         };
         const next = new Map<string, MarketWithAddress>();
         for (const row of payload.markets ?? []) {
           const decoded = decodeRow({
             address: row.address,
             account_data_base64: row.accountDataBase64,
+            vault_lamports: row.vaultLamports,
           });
           if (decoded) next.set(decoded.address, decoded);
         }
@@ -176,17 +188,20 @@ export function useMarketsRealtime(): UseMarketsRealtimeResult {
  */
 export function useMarketRealtime(address: Address | null): {
   market: Market | null;
+  vaultLamports: bigint | null;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
 } {
   const [market, setMarket] = useState<Market | null>(null);
+  const [vaultLamports, setVaultLamports] = useState<bigint | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchSnapshot = useCallback(async () => {
     if (!address) {
       setMarket(null);
+      setVaultLamports(null);
       setLoading(false);
       return;
     }
@@ -196,43 +211,52 @@ export function useMarketRealtime(address: Address | null): {
       if (supabase) {
         const { data, error: selErr } = await supabase
           .from("markets_cache")
-          .select("account_data_base64")
+          .select("account_data_base64, vault_lamports")
           .eq("address", address)
           .maybeSingle();
         if (selErr) throw selErr;
         if (!data) {
-          // Cache miss: ask the server to bootstrap from RPC so the
-          // subsequent realtime UPDATE can fill us in.
           await fetch("/api/markets/sync-one", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ address }),
           }).catch(() => {});
           setMarket(null);
+          setVaultLamports(null);
           return;
         }
         const decoded = decodeRow({
           address,
           account_data_base64: (data as { account_data_base64: string }).account_data_base64,
+          vault_lamports: (data as { vault_lamports?: unknown }).vault_lamports,
         });
         setMarket(decoded?.market ?? null);
+        setVaultLamports(decoded?.vaultLamports ?? null);
       } else {
-        // Fallback to the API route when browser Supabase is not configured.
         const response = await fetch(
           `/api/markets/${encodeURIComponent(address)}`,
           { cache: "no-store" },
         );
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = (await response.json()) as {
-          market: { accountDataBase64: string };
+          market: {
+            accountDataBase64: string;
+            vaultLamports?: string | null;
+          };
         };
         const b64 = payload.market?.accountDataBase64;
         if (!b64) {
           setMarket(null);
+          setVaultLamports(null);
           return;
         }
-        const decoded = decodeRow({ address, account_data_base64: b64 });
+        const decoded = decodeRow({
+          address,
+          account_data_base64: b64,
+          vault_lamports: payload.market?.vaultLamports ?? null,
+        });
         setMarket(decoded?.market ?? null);
+        setVaultLamports(decoded?.vaultLamports ?? null);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load market";
@@ -268,12 +292,14 @@ export function useMarketRealtime(address: Address | null): {
         (payload) => {
           if (payload.eventType === "DELETE") {
             setMarket(null);
+            setVaultLamports(null);
             return;
           }
           const row = payload.new as MarketsCacheRow | null;
           if (!row) return;
-          const decoded = decodeRow(row);
+          const decoded = decodeRow({ ...row, address });
           setMarket(decoded?.market ?? null);
+          setVaultLamports(decoded?.vaultLamports ?? null);
         },
       )
       .subscribe();
@@ -283,5 +309,5 @@ export function useMarketRealtime(address: Address | null): {
     };
   }, [address]);
 
-  return { market, loading, error, refresh: fetchSnapshot };
+  return { market, vaultLamports, loading, error, refresh: fetchSnapshot };
 }

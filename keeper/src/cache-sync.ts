@@ -2,14 +2,11 @@
  * Keeper-embedded cache sync.
  *
  * Piggybacks on the keeper process so we do not need a separate cron/Vercel
- * deployment. Reuses the exact same sync logic the `/api/markets/sync` route
- * calls, so there is a single source of truth.
+ * deployment for a no-op health tick. Bulk cache sync from chain is disabled;
+ * aligns with POST /api/markets/sync returning skipped for markets + positions.
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-
-import { syncMarketsCache } from "../../app/lib/markets-cache";
-import { syncPositionsCache } from "../../app/lib/positions-cache";
 
 export type CacheSyncConfig = {
   enabled: boolean;
@@ -28,12 +25,16 @@ export function makeSupabaseClient(
   });
 }
 
-export async function runCacheSyncOnce(
-  supabase: SupabaseClient,
-  rpcUrl: string,
-): Promise<{ markets: { upserted: number; deleted: number }; positions: { upserted: number; deleted: number }; durationMs: number }> {
+export async function runCacheSyncOnce(): Promise<{
+  markets: { skipped: true; reason: "market_full_sync_disabled" };
+  positions: { skipped: true; reason: "positions_full_sync_disabled" };
+  durationMs: number;
+}> {
   const start = Date.now();
-  const markets = await syncMarketsCache(supabase, rpcUrl);
-  const positions = await syncPositionsCache(supabase, rpcUrl);
+  const markets = { skipped: true as const, reason: "market_full_sync_disabled" as const };
+  const positions = {
+    skipped: true as const,
+    reason: "positions_full_sync_disabled" as const,
+  };
   return { markets, positions, durationMs: Date.now() - start };
 }

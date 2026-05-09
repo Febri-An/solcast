@@ -9,6 +9,7 @@ import { getRedeemInstructionAsync } from "../generated/prediction_market";
 import { useToast } from "./toast";
 import { type Market } from "../generated/prediction_market/accounts/market";
 import { type UserPosition } from "../generated/prediction_market/accounts/userPosition";
+import { formatMarketVaultSolDisplay } from "../lib/market-format";
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 
@@ -17,6 +18,7 @@ interface PositionCardProps {
   positionAddress: Address;
   market: Market | null;
   marketAddress: Address;
+  vaultLamports?: bigint | null;
   onUpdate?: () => void;
   animationDelay?: number;
 }
@@ -80,6 +82,7 @@ export function PositionCard({
   position,
   market,
   marketAddress,
+  vaultLamports = null,
   onUpdate,
   animationDelay = 0,
 }: PositionCardProps): ReactNode {
@@ -140,6 +143,22 @@ export function PositionCard({
             {timeInfo && (
               <p className="text-xs text-muted mt-0.5">{timeInfo}</p>
             )}
+            <div className="mt-1 flex items-center gap-1 text-xs text-muted">
+              <span
+                className="inline-flex items-center gap-1"
+                title="Gross SOL on market account (vault, includes rent). Not the YES+NO reserve sum."
+              >
+                <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 10v1"
+                  />
+                </svg>
+                {formatMarketVaultSolDisplay(vaultLamports)} SOL vault
+              </span>
+            </div>
           </div>
           <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${badgeClass}`}>
             {label}

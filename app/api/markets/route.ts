@@ -1,40 +1,33 @@
 import { NextResponse } from "next/server";
 
-import { fetchMarketsFromRpc, readMarketsCache, syncMarketsCache } from "@/app/lib/markets-cache";
-import { SOLANA_RPC_URL } from "@/app/lib/solana-rpc";
+import { readMarketsCache } from "@/app/lib/markets-cache";
 import { createServiceSupabase, isSupabaseConfigured } from "@/app/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/markets
- * - If Supabase is configured: read `markets_cache` (bootstrap from RPC once if empty).
- * - Otherwise: fetch directly from Solana RPC (same as before, but server-side only).
+ * - Read-only from `markets_cache` in Supabase.
+ * - No RPC fallback and no automatic backfill from chain.
  */
 export async function GET() {
-  const rpcUrl = SOLANA_RPC_URL;
-
   if (!isSupabaseConfigured()) {
-    try {
-      const markets = await fetchMarketsFromRpc(rpcUrl);
-      return NextResponse.json({ source: "rpc", markets });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "RPC fetch failed";
-      return NextResponse.json({ error: message }, { status: 502 });
-    }
+    return NextResponse.json({ error: "Supabase is not configured" }, { status: 503 });
   }
 
   try {
     const supabase = createServiceSupabase();
-    let rows = await readMarketsCache(supabase);
-
-    if (rows.length === 0) {
-      await syncMarketsCache(supabase, rpcUrl);
-      rows = await readMarketsCache(supabase);
-    }
+    const rows = await readMarketsCache(supabase);
 
     return NextResponse.json(
-      { source: "cache", markets: rows },
+      {
+        source: "cache",
+        markets: rows.map((r) => ({
+          address: r.address,
+          accountDataBase64: r.accountDataBase64,
+          vaultLamports: r.vaultLamports?.toString() ?? null,
+        })),
+      },
       {
         headers: {
           "Cache-Control": "private, max-age=0, must-revalidate",
@@ -42,17 +35,8 @@ export async function GET() {
       },
     );
   } catch (e) {
-    console.error("[api/markets] cache error, falling back to RPC:", e);
-    try {
-      const markets = await fetchMarketsFromRpc(rpcUrl);
-      return NextResponse.json({
-        source: "rpc",
-        markets,
-        warning: "cache_unavailable",
-      });
-    } catch (e2) {
-      const message = e2 instanceof Error ? e2.message : "Failed to load markets";
-      return NextResponse.json({ error: message }, { status: 502 });
-    }
+    const message = e instanceof Error ? e.message : "Failed to load markets from cache";
+    console.error("[api/markets] cache error:", e);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

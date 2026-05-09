@@ -14,6 +14,11 @@ export function formatVolume(lamports: bigint): string {
   return sol.toFixed(4);
 }
 
+export function formatMarketVaultSolDisplay(lamports: bigint | null | undefined): string {
+  if (lamports === undefined || lamports === null) return "—";
+  return formatVolume(lamports);
+}
+
 export function getTimeRemaining(resolutionTime: number): string {
   const now = Date.now() / 1000;
   const diff = resolutionTime - now;
@@ -119,10 +124,24 @@ export function formatMarketTargetUsd(
   });
 }
 
-/** Open for betting: not resolved and before resolution time. */
-export function isOpenForBetting(market: { resolved: boolean; resolutionTime: bigint }): boolean {
+/** Strike in USD as a number (for charts / comparisons). */
+export function marketTargetUsdAsNumber(
+  targetPrice: bigint,
+  targetPriceEncoding: number,
+): number {
+  if (targetPriceEncoding === TARGET_PRICE_ENCODING_NANODOLLARS) {
+    return Number(targetPrice) / 1e9;
+  }
+  return Number(targetPrice);
+}
+
+/** Open for betting: not resolved and before resolution time. Pass `nowSec` when grouping lists so tabs stay accurate between refreshes. */
+export function isOpenForBetting(
+  market: { resolved: boolean; resolutionTime: bigint },
+  nowSec: number = Math.floor(Date.now() / 1000),
+): boolean {
   if (market.resolved) return false;
-  return Date.now() / 1000 < Number(market.resolutionTime);
+  return nowSec < Number(market.resolutionTime);
 }
 
 /**

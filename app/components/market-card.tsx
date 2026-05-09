@@ -13,10 +13,14 @@ import { useMarketTrading } from "../hooks/use-market-trading";
 import { useProfile } from "../hooks/use-profile";
 import { useProbabilityFlash } from "../hooks/use-probability-flash";
 import {
+  getResolutionCountdownState,
   resolutionCountdownTextClassName,
-  useResolutionCountdown,
 } from "../hooks/use-resolution-countdown";
-import { formatSol, formatVolume, isShortLiveWindowMarket } from "../lib/market-format";
+import {
+  formatMarketVaultSolDisplay,
+  formatSol,
+  isShortLiveWindowMarket,
+} from "../lib/market-format";
 import { getAssetBrandName, getAssetIconSrc } from "../lib/price-feeds";
 import { ProbabilityPercent } from "./probability-percent";
 import { useToast } from "./toast";
@@ -24,7 +28,9 @@ import { useToast } from "./toast";
 interface MarketCardProps {
   market: Market;
   marketAddress: Address;
+  vaultLamports?: bigint | null;
   onUpdate?: () => void;
+  nowSec?: number;
   /** Multi-column grid on home (tab Active); tighter card layout. */
   density?: "grid" | "list";
   className?: string;
@@ -188,7 +194,9 @@ function AssetIcon({ feedId }: { feedId: Market["feedId"]; compact?: boolean }):
 export function MarketCard({
   market,
   marketAddress,
+  vaultLamports = null,
   onUpdate,
+  nowSec,
   density = "list",
   className,
 }: MarketCardProps): ReactNode {
@@ -196,6 +204,7 @@ export function MarketCard({
   const { openProfileModal, configured: profileConfigured } = useProfile();
   const { showToast } = useToast();
   const [bookmarked, setBookmarked] = useState(false);
+  const [initialNowSec] = useState(() => Date.now() / 1000);
 
   const handleRedeemSuccess = useCallback(() => {
     showToast("Winnings redeemed successfully.");
@@ -209,7 +218,6 @@ export function MarketCard({
     resolutionTime,
     canTrade: canTradeMarket,
     canResolve,
-    totalShares,
     yesPercent,
     noPercent,
     handleResolve,
@@ -231,8 +239,9 @@ export function MarketCard({
   const isGrid = density === "grid";
   const shortLiveWindow = isShortLiveWindowMarket(market);
 
-  const { label: countdownLabel, urgency: countdownUrgency } = useResolutionCountdown(
+  const { label: countdownLabel, urgency: countdownUrgency } = getResolutionCountdownState(
     resolutionTime,
+    nowSec ?? initialNowSec,
     showUpDownCard,
   );
 
@@ -330,8 +339,11 @@ export function MarketCard({
               </>
             ) : (
               <>
-                <span className="shrink-0 font-mono font-medium text-foreground-secondary">
-                  {formatVolume(totalShares)} vol
+                <span
+                  className="shrink-0 font-mono font-medium text-foreground-secondary"
+                  title="SOL on market account (vault). Not the sum of YES/NO pool reserves."
+                >
+                  {formatMarketVaultSolDisplay(vaultLamports)} vault
                 </span>
                 <span className="text-border-strong">·</span>
                 <span className="truncate text-muted">{brandName}</span>
@@ -436,8 +448,11 @@ export function MarketCard({
             )}
           </div>
           <div className="flex items-center gap-3 text-xs text-muted">
-            <span className="flex items-center gap-1">
-              {formatVolume(totalShares)} SOL vol.
+            <span
+              className="flex items-center gap-1"
+              title="SOL on market PDA (vault). Not YES+NO reserve sum."
+            >
+              {formatMarketVaultSolDisplay(vaultLamports)} SOL vault
             </span>
           </div>
         </div>

@@ -5,10 +5,19 @@ import {
   readMarketFromCache,
   upsertMarketRow,
 } from "@/app/lib/markets-cache";
+import { type RpcMarketRow } from "@/app/lib/markets-cache";
 import { SOLANA_RPC_URL } from "@/app/lib/solana-rpc";
 import { createServiceSupabase, isSupabaseConfigured } from "@/app/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+function jsonMarketRow(row: RpcMarketRow) {
+  return {
+    address: row.address,
+    accountDataBase64: row.accountDataBase64,
+    vaultLamports: row.vaultLamports?.toString() ?? null,
+  };
+}
 
 /**
  * GET /api/markets/[address]
@@ -34,7 +43,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ address: strin
       if (!row) {
         return NextResponse.json({ error: "Market not found" }, { status: 404 });
       }
-      return NextResponse.json({ source: "cache", market: row });
+      return NextResponse.json({ source: "cache", market: jsonMarketRow(row) });
     } catch (e) {
       console.error("[api/markets/[address]] cache error, falling back to RPC:", e);
     }
@@ -45,7 +54,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ address: strin
     if (!row) {
       return NextResponse.json({ error: "Market not found" }, { status: 404 });
     }
-    return NextResponse.json({ source: "rpc", market: row });
+    return NextResponse.json({ source: "rpc", market: jsonMarketRow(row) });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to load market";
     return NextResponse.json({ error: message }, { status: 502 });

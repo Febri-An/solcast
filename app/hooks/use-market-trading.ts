@@ -20,15 +20,37 @@ import {
   quoteSell,
   yesPriceBps,
 } from "../lib/amm-math";
+import { fetchMarketReservesConfirmed } from "../lib/fetch-market-reserves-client";
+import { computeDynamicSlippageBps } from "../lib/trade-slippage";
+import { isProbablySlippageExceededError } from "../lib/trade-tx-errors";
 import { LAMPORTS_PER_SOL } from "../lib/market-format";
-import { syncMarketAndPosition, syncMarketRow } from "../lib/write-through";
+import {
+  fetchPositionMetrics,
+  recordPositionFill,
+  syncMarketAndPosition,
+  syncMarketRow,
+} from "../lib/write-through";
 import { useToast } from "../components/toast";
 import { useProfile } from "./use-profile";
 import { useUserPositionRealtime } from "./use-positions-realtime";
 
 const STATUS_CLEAR_DELAY_MS = 3000;
-/** User-facing default slippage tolerance (1%). */
-const DEFAULT_SLIPPAGE_BPS = 100;
+const TRADE_ATTEMPTS = 3;
+/** Extra delay before refetch/re-sign after a simulation slippage miss. */
+const TRADE_RETRY_BASE_DELAY_MS = 400;
+
+/** User cap for dynamic slippage (basis points); stored in localStorage. */
+export const TRADE_MAX_SLIPPAGE_STORAGE_KEY =
+  "prediction_market_trade_slippage_max_bps";
+
+/** Presets for sidebar — caps the dynamic curve (not a literal fixed 5% dump). */
+export const TRADE_MAX_SLIPPAGE_OPTIONS: ReadonlyArray<{ bps: number; label: string }> = [
+  { bps: 200, label: "2% max" },
+  { bps: 250, label: "2.5% max" },
+  { bps: 300, label: "3% max" },
+  { bps: 400, label: "4% max" },
+  { bps: 500, label: "5% max" },
+];
 
 export function unwrapOutcome(option: Option<boolean>): boolean | null {
   return isSome(option) ? option.value : null;
@@ -131,15 +153,98 @@ export function useMarketTrading(
   const [isResolving, setIsResolving] = useState(false);
   const [optimisticOverlay, setOptimisticOverlay] =
     useState<OptimisticOverlay | null>(null);
+  const [yesCostBasisLamports, setYesCostBasisLamports] = useState(0n);
+  const [noCostBasisLamports, setNoCostBasisLamports] = useState(0n);
+  const [realizedPnlLamports, setRealizedPnlLamports] = useState(0n);
+
+  /** Ceiling (bps) passed into `computeDynamicSlippageBps` — default 4%. */
+  const [tradeMaxSlippageBps, setTradeMaxSlippageBpsState] = useState(400);
 
   const walletAddress = wallet?.account.address;
 
+  const refreshPositionMetrics = useCallback(async () => {
+    if (!walletAddress) {
+      setYesCostBasisLamports(0n);
+      setNoCostBasisLamports(0n);
+      setRealizedPnlLamports(0n);
+      return;
+    }
+    const row = await fetchPositionMetrics(walletAddress, marketAddress);
+    if (!row) {
+      setYesCostBasisLamports(0n);
+      setNoCostBasisLamports(0n);
+      setRealizedPnlLamports(0n);
+      return;
+    }
+    try {
+      setYesCostBasisLamports(BigInt(row.yes_cost_basis_lamports ?? "0"));
+      setNoCostBasisLamports(BigInt(row.no_cost_basis_lamports ?? "0"));
+      setRealizedPnlLamports(BigInt(row.realized_pnl_lamports ?? "0"));
+    } catch {
+      setYesCostBasisLamports(0n);
+      setNoCostBasisLamports(0n);
+      setRealizedPnlLamports(0n);
+    }
+  }, [walletAddress, marketAddress]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(TRADE_MAX_SLIPPAGE_STORAGE_KEY);
+      if (!raw) return;
+      const n = Number.parseInt(raw, 10);
+      if (!Number.isNaN(n) && n >= 150 && n <= 500)
+        setTradeMaxSlippageBpsState(n);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPositionMetrics();
+  }, [refreshPositionMetrics]);
+
+  const setTradeMaxSlippageBps = useCallback((bps: number) => {
+    setTradeMaxSlippageBpsState(bps);
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(TRADE_MAX_SLIPPAGE_STORAGE_KEY, String(bps));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   // Subscribe to the user's position via Supabase realtime so buy/sell/redeem
   // reflect the moment the write-through lands (no polling).
-  const { position: userPosition } = useUserPositionRealtime(
-    walletAddress ?? null,
+  const { position: userPosition, refresh: refreshCachedUserPosition } =
+    useUserPositionRealtime(walletAddress ?? null, marketAddress);
+
+  /**
+   * RPC → POST sync-one writes fresh account bytes into `positions_cache`. We must
+   * await that plus re-fetch locally; relying only on realtime is flaky (race,
+   * missed WS events), which leaves stale share counts after sell/redeem.
+   */
+  const hydratePositionCacheAfterTrade = useCallback(async () => {
+    const w = walletAddress ?? "";
+    if (!w) return;
+    await syncMarketAndPosition(String(marketAddress), w);
+    const backoffMs = [0, 280, 650, 1200];
+    for (let i = 0; i < backoffMs.length; i++) {
+      if (backoffMs[i] > 0) {
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, backoffMs[i]),
+        );
+      }
+      await refreshCachedUserPosition();
+    }
+    await refreshPositionMetrics();
+  }, [
+    walletAddress,
     marketAddress,
-  );
+    refreshCachedUserPosition,
+    refreshPositionMetrics,
+  ]);
 
   const isResolved = market.resolved;
   const now = Date.now() / 1000;
@@ -154,8 +259,6 @@ export function useMarketTrading(
   const yesShares = optimisticOverlay?.yesShares ?? market.yesShares;
   const noShares = optimisticOverlay?.noShares ?? market.noShares;
   const feeBps = market.feeBps;
-  /** Total virtual TVL of the market pool, roughly tracks SOL volume. */
-  const totalShares = yesShares + noShares;
 
   // Clear the optimistic overlay whenever the authoritative market state
   // changes — i.e. the realtime push / refresh has landed, so we now have
@@ -216,46 +319,95 @@ export function useMarketTrading(
           return;
         }
 
-        // Quote against the best-known pool state: prefer the optimistic
-        // overlay if a prior trade just landed (chain-truth for ~500 ms
-        // before realtime catches up), else the authoritative market prop.
-        const quote = quoteBuy(yesShares, noShares, amount, buyYes, feeBps);
-        if (isTradeError(quote)) {
-          setTxStatus(`Quote failed: ${quote}`);
-          showToast(`Quote failed: ${quote}`, { variant: "error" });
+        for (let attempt = 0; attempt < TRADE_ATTEMPTS; attempt++) {
+          if (attempt > 0) {
+            setTxStatus("Refreshing quote after slippage miss…");
+            showToast(`Pool moved — refreshing quote (${attempt + 1}/${TRADE_ATTEMPTS})…`, {
+              variant: "loading",
+            });
+            await new Promise((r) =>
+              setTimeout(r, TRADE_RETRY_BASE_DELAY_MS * attempt),
+            );
+          }
+
+          const reserves = await fetchMarketReservesConfirmed(marketAddress);
+          if (!reserves) {
+            setTxStatus("Could not read market pool from RPC.");
+            showToast("Market account not found — check RPC / cluster.", {
+              variant: "error",
+            });
+            return;
+          }
+
+          const quote = quoteBuy(
+            reserves.yesShares,
+            reserves.noShares,
+            amount,
+            buyYes,
+            reserves.feeBps,
+          );
+          if (isTradeError(quote)) {
+            setTxStatus(`Quote failed: ${quote}`);
+            showToast(`Quote failed: ${quote}`, { variant: "error" });
+            return;
+          }
+
+          const poolTotal = reserves.yesShares + reserves.noShares;
+          const slippageBps = computeDynamicSlippageBps({
+            poolTotal,
+            maxCapBps: tradeMaxSlippageBps,
+            amountIn: amount,
+          });
+          const minOut = applySlippage(quote.out, slippageBps);
+
+          const instruction = await getBuyInstructionAsync({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wallet adapter vs Codama signer types
+            user: wallet.account as any,
+            market: marketAddress,
+            amountIn: amount,
+            buyYes,
+            minSharesOut: minOut,
+          });
+
+          setTxStatus("Awaiting signature...");
+          showToast("Awaiting wallet signature...", { variant: "loading" });
+          let sendResult: unknown;
+
+          try {
+            sendResult = await send({ instructions: [instruction] });
+          } catch (sendErr) {
+            if (
+              attempt < TRADE_ATTEMPTS - 1 &&
+              isProbablySlippageExceededError(sendErr)
+            ) {
+              logTxError(`Buy attempt ${attempt + 1} (slippage)`, sendErr);
+              continue;
+            }
+            throw sendErr;
+          }
+
+          setOptimisticOverlay({
+            yesShares: quote.newYesShares,
+            noShares: quote.newNoShares,
+          });
+          const txSignature = typeof sendResult === "string" ? sendResult : undefined;
+          await recordPositionFill({
+            clientFillId: crypto.randomUUID(),
+            txSignature,
+            wallet: walletAddress,
+            market: marketAddress,
+            side: buyYes ? "buy_yes" : "buy_no",
+            sharesDelta: quote.out,
+            lamportsDelta: amount,
+          });
+          await hydratePositionCacheAfterTrade();
+          setTradeAmount("");
+          setTxStatus(null);
+          showToast(`Buy executed: received ${quote.out.toString()} shares.`);
+          onTradeSuccess?.();
+          onUpdate?.();
           return;
         }
-        const minOut = applySlippage(quote.out, DEFAULT_SLIPPAGE_BPS);
-
-        const instruction = await getBuyInstructionAsync({
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wallet adapter vs Codama signer types
-          user: wallet.account as any,
-          market: marketAddress,
-          amountIn: amount,
-          buyYes,
-          minSharesOut: minOut,
-        });
-
-        setTxStatus("Awaiting signature...");
-        showToast("Awaiting wallet signature...", { variant: "loading" });
-        await send({ instructions: [instruction] });
-
-        // Optimistic overlay: the AMM math mirrors on-chain, so our expected
-        // pool values should match the confirmed state within 1 lamport.
-        setOptimisticOverlay({
-          yesShares: quote.newYesShares,
-          noShares: quote.newNoShares,
-        });
-
-        // Write-through: refresh market + position rows in Supabase so the
-        // realtime subscription pushes authoritative numbers across clients.
-        void syncMarketAndPosition(marketAddress, walletAddress);
-
-        setTradeAmount("");
-        setTxStatus(null);
-        showToast(`Buy executed: received ${quote.out.toString()} shares.`);
-        onTradeSuccess?.();
-        onUpdate?.();
       } catch (err) {
         logTxError("Buy failed", err);
         const message = formatTxError(err);
@@ -269,13 +421,13 @@ export function useMarketTrading(
       walletAddress,
       marketAddress,
       tradeAmount,
-      yesShares,
-      noShares,
-      feeBps,
       send,
       onUpdate,
       isProfileComplete,
       onTradeSuccess,
+      tradeMaxSlippageBps,
+      showToast,
+      hydratePositionCacheAfterTrade,
     ],
   );
 
@@ -287,41 +439,94 @@ export function useMarketTrading(
       try {
         setTxStatus("Building transaction...");
         showToast("Preparing sell transaction...", { variant: "loading" });
-        // Quote against overlay-aware pool state (see handleBuy for rationale).
-        const quote = quoteSell(yesShares, noShares, sharesIn, sellYes);
-        if (isTradeError(quote)) {
-          setTxStatus(`Quote failed: ${quote}`);
-          showToast(`Quote failed: ${quote}`, { variant: "error" });
+
+        for (let attempt = 0; attempt < TRADE_ATTEMPTS; attempt++) {
+          if (attempt > 0) {
+            setTxStatus("Refreshing quote after slippage miss…");
+            showToast(`Pool moved — refreshing quote (${attempt + 1}/${TRADE_ATTEMPTS})…`, {
+              variant: "loading",
+            });
+            await new Promise((r) =>
+              setTimeout(r, TRADE_RETRY_BASE_DELAY_MS * attempt),
+            );
+          }
+
+          const reserves = await fetchMarketReservesConfirmed(marketAddress);
+          if (!reserves) {
+            setTxStatus("Could not read market pool from RPC.");
+            showToast("Market account not found — check RPC / cluster.", {
+              variant: "error",
+            });
+            return;
+          }
+
+          const quote = quoteSell(
+            reserves.yesShares,
+            reserves.noShares,
+            sharesIn,
+            sellYes,
+          );
+          if (isTradeError(quote)) {
+            setTxStatus(`Quote failed: ${quote}`);
+            showToast(`Quote failed: ${quote}`, { variant: "error" });
+            return;
+          }
+
+          const poolTotal = reserves.yesShares + reserves.noShares;
+          const slippageBps = computeDynamicSlippageBps({
+            poolTotal,
+            maxCapBps: tradeMaxSlippageBps,
+            sharesIn,
+          });
+          const minSol = applySlippage(quote.out, slippageBps);
+
+          const instruction = await getSellInstructionAsync({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wallet adapter vs Codama signer types
+            user: wallet.account as any,
+            market: marketAddress,
+            sharesIn,
+            sellYes,
+            minSolOut: minSol,
+          });
+
+          setTxStatus("Awaiting signature...");
+          showToast("Awaiting wallet signature...", { variant: "loading" });
+          let sendResult: unknown;
+
+          try {
+            sendResult = await send({ instructions: [instruction] });
+          } catch (sendErr) {
+            if (
+              attempt < TRADE_ATTEMPTS - 1 &&
+              isProbablySlippageExceededError(sendErr)
+            ) {
+              logTxError(`Sell attempt ${attempt + 1} (slippage)`, sendErr);
+              continue;
+            }
+            throw sendErr;
+          }
+
+          setOptimisticOverlay({
+            yesShares: quote.newYesShares,
+            noShares: quote.newNoShares,
+          });
+          const txSignature = typeof sendResult === "string" ? sendResult : undefined;
+          await recordPositionFill({
+            clientFillId: crypto.randomUUID(),
+            txSignature,
+            wallet: walletAddress,
+            market: marketAddress,
+            side: sellYes ? "sell_yes" : "sell_no",
+            sharesDelta: sharesIn,
+            lamportsDelta: quote.out,
+          });
+          await hydratePositionCacheAfterTrade();
+          setTxStatus(null);
+          showToast(`Sell executed: received ${quote.out.toString()} lamports.`);
+          onTradeSuccess?.();
+          onUpdate?.();
           return;
         }
-        const minSol = applySlippage(quote.out, DEFAULT_SLIPPAGE_BPS);
-
-        const instruction = await getSellInstructionAsync({
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- wallet adapter vs Codama signer types
-          user: wallet.account as any,
-          market: marketAddress,
-          sharesIn,
-          sellYes,
-          minSolOut: minSol,
-        });
-
-        setTxStatus("Awaiting signature...");
-        showToast("Awaiting wallet signature...", { variant: "loading" });
-        await send({ instructions: [instruction] });
-
-        // Optimistic overlay: mirror the quote's post-sell pool reserves so
-        // the sidebar price moves instantly.
-        setOptimisticOverlay({
-          yesShares: quote.newYesShares,
-          noShares: quote.newNoShares,
-        });
-
-        void syncMarketAndPosition(marketAddress, walletAddress);
-
-        setTxStatus(null);
-        showToast(`Sell executed: received ${quote.out.toString()} lamports.`);
-        onTradeSuccess?.();
-        onUpdate?.();
       } catch (err) {
         logTxError("Sell failed", err);
         const message = formatTxError(err);
@@ -334,11 +539,12 @@ export function useMarketTrading(
       wallet,
       walletAddress,
       marketAddress,
-      yesShares,
-      noShares,
       send,
       onUpdate,
       onTradeSuccess,
+      tradeMaxSlippageBps,
+      showToast,
+      hydratePositionCacheAfterTrade,
     ],
   );
 
@@ -400,7 +606,7 @@ export function useMarketTrading(
 
       // Redeem zeroes the winning shares and may decrement supply counters
       // on the market. Sync both so the UI reflects the settlement right away.
-      void syncMarketAndPosition(marketAddress, walletAddress);
+      void hydratePositionCacheAfterTrade();
 
       onRedeemSuccess?.();
       onUpdate?.();
@@ -410,7 +616,16 @@ export function useMarketTrading(
       setTxStatus(`Error: ${message}`);
       showToast(`Redeem failed: ${message}`, { variant: "error", durationMs: 5000 });
     }
-  }, [wallet, walletAddress, marketAddress, send, onUpdate, onRedeemSuccess, showToast]);
+  }, [
+    wallet,
+    walletAddress,
+    marketAddress,
+    send,
+    onUpdate,
+    onRedeemSuccess,
+    showToast,
+    hydratePositionCacheAfterTrade,
+  ]);
 
   const canRedeem = useMemo(() => {
     if (status !== "connected" || !isResolved || !userPosition) return false;
@@ -428,10 +643,65 @@ export function useMarketTrading(
     return outcome ? userPosition.yesShares : userPosition.noShares;
   }, [isResolved, userPosition, market.outcome]);
 
+  /** Estimated SOL out if user sells all YES shares at current pool state. */
+  const estimatedYesExitLamports = useMemo(() => {
+    if (!userPosition || userPosition.yesShares <= 0n) return 0n;
+    const q = quoteSell(yesShares, noShares, userPosition.yesShares, true);
+    return isTradeError(q) ? 0n : q.out;
+  }, [userPosition, yesShares, noShares]);
+
+  /** Estimated SOL out if user sells all NO shares at current pool state. */
+  const estimatedNoExitLamports = useMemo(() => {
+    if (!userPosition || userPosition.noShares <= 0n) return 0n;
+    const q = quoteSell(yesShares, noShares, userPosition.noShares, false);
+    return isTradeError(q) ? 0n : q.out;
+  }, [userPosition, yesShares, noShares]);
+
+  /** Raw cost basis from Supabase (can briefly lag on-chain share counts). */
+  const rawNetInvestedLamports = useMemo(
+    () => yesCostBasisLamports + noCostBasisLamports,
+    [yesCostBasisLamports, noCostBasisLamports],
+  );
+
+  const hasOpenShares = useMemo(() => {
+    if (!userPosition) return false;
+    return userPosition.yesShares > 0n || userPosition.noShares > 0n;
+  }, [userPosition]);
+
+  const netInvestedLamports = useMemo(() => {
+    if (!hasOpenShares) return 0n;
+    return rawNetInvestedLamports;
+  }, [hasOpenShares, rawNetInvestedLamports]);
+
+  const estimatedExitLamports = useMemo(
+    () => estimatedYesExitLamports + estimatedNoExitLamports,
+    [estimatedYesExitLamports, estimatedNoExitLamports],
+  );
+
+  const unrealizedPnlLamports = useMemo(() => {
+    if (!hasOpenShares) return 0n;
+    // Until Supabase cost basis catches `recordPositionFill`, don't treat exit value as PnL.
+    if (rawNetInvestedLamports === 0n) return 0n;
+    return estimatedExitLamports - netInvestedLamports;
+  }, [
+    hasOpenShares,
+    rawNetInvestedLamports,
+    estimatedExitLamports,
+    netInvestedLamports,
+  ]);
+
+  const isCostBasisIncomplete = useMemo(() => {
+    if (!userPosition) return false;
+    const hasShares = userPosition.yesShares > 0n || userPosition.noShares > 0n;
+    return hasShares && rawNetInvestedLamports === 0n;
+  }, [userPosition, rawNetInvestedLamports]);
+
   return {
     wallet,
     status,
     isSending,
+    tradeMaxSlippageBps,
+    setTradeMaxSlippageBps,
     tradeAmount,
     setTradeAmount,
     txStatus,
@@ -444,7 +714,6 @@ export function useMarketTrading(
     canResolve,
     yesShares,
     noShares,
-    totalShares,
     yesBps,
     yesPercent,
     noPercent,
@@ -455,6 +724,14 @@ export function useMarketTrading(
     handleRedeem,
     canRedeem,
     redeemPayout,
+    estimatedYesExitLamports,
+    estimatedNoExitLamports,
+    yesCostBasisLamports,
+    noCostBasisLamports,
+    netInvestedLamports,
+    realizedPnlLamports,
+    unrealizedPnlLamports,
+    isCostBasisIncomplete,
     isProfileComplete,
   };
 }

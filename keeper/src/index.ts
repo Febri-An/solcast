@@ -214,12 +214,9 @@ function startCacheSync(
     }
     running = true;
     try {
-      const { markets, positions, durationMs } = await runCacheSyncOnce(
-        supabase,
-        config.rpcUrl,
-      );
+      const { markets, positions, durationMs } = await runCacheSyncOnce();
       console.log(
-        `[cache-sync] markets upsert=${markets.upserted} del=${markets.deleted} | positions upsert=${positions.upserted} del=${positions.deleted} | ${durationMs}ms`,
+        `[cache-sync] markets skipped (${markets.reason}) | positions skipped (${positions.reason}) | ${durationMs}ms`,
       );
     } catch (err) {
       console.error("[cache-sync] failed:", (err as Error).message);
@@ -228,7 +225,6 @@ function startCacheSync(
     }
   };
 
-  // Run immediately on startup so the cache is warm before the first user hit.
   void tick();
   const handle = setInterval(tick, intervalMs);
   return {
