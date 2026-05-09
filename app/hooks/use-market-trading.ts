@@ -217,10 +217,34 @@ export function useMarketTrading(
 
   // Subscribe to the user's position via Supabase realtime so buy/sell/redeem
   // reflect the moment the write-through lands (no polling).
-  const { position: userPosition } = useUserPositionRealtime(
-    walletAddress ?? null,
+  const { position: userPosition, refresh: refreshCachedUserPosition } =
+    useUserPositionRealtime(walletAddress ?? null, marketAddress);
+
+  /**
+   * RPC → POST sync-one writes fresh account bytes into `positions_cache`. We must
+   * await that plus re-fetch locally; relying only on realtime is flaky (race,
+   * missed WS events), which leaves stale share counts after sell/redeem.
+   */
+  const hydratePositionCacheAfterTrade = useCallback(async () => {
+    const w = walletAddress ?? "";
+    if (!w) return;
+    await syncMarketAndPosition(String(marketAddress), w);
+    const backoffMs = [0, 280, 650, 1200];
+    for (let i = 0; i < backoffMs.length; i++) {
+      if (backoffMs[i] > 0) {
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, backoffMs[i]),
+        );
+      }
+      await refreshCachedUserPosition();
+    }
+    await refreshPositionMetrics();
+  }, [
+    walletAddress,
     marketAddress,
-  );
+    refreshCachedUserPosition,
+    refreshPositionMetrics,
+  ]);
 
   const isResolved = market.resolved;
   const now = Date.now() / 1000;
@@ -376,8 +400,7 @@ export function useMarketTrading(
             sharesDelta: quote.out,
             lamportsDelta: amount,
           });
-          void syncMarketAndPosition(marketAddress, walletAddress);
-          void refreshPositionMetrics();
+          void hydratePositionCacheAfterTrade();
           setTradeAmount("");
           setTxStatus(null);
           showToast(`Buy executed: received ${quote.out.toString()} shares.`);
@@ -404,7 +427,7 @@ export function useMarketTrading(
       onTradeSuccess,
       tradeMaxSlippageBps,
       showToast,
-      refreshPositionMetrics,
+      hydratePositionCacheAfterTrade,
     ],
   );
 
@@ -497,8 +520,7 @@ export function useMarketTrading(
             sharesDelta: sharesIn,
             lamportsDelta: quote.out,
           });
-          void syncMarketAndPosition(marketAddress, walletAddress);
-          void refreshPositionMetrics();
+          void hydratePositionCacheAfterTrade();
           setTxStatus(null);
           showToast(`Sell executed: received ${quote.out.toString()} lamports.`);
           onTradeSuccess?.();
@@ -522,7 +544,7 @@ export function useMarketTrading(
       onTradeSuccess,
       tradeMaxSlippageBps,
       showToast,
-      refreshPositionMetrics,
+      hydratePositionCacheAfterTrade,
     ],
   );
 
@@ -584,7 +606,7 @@ export function useMarketTrading(
 
       // Redeem zeroes the winning shares and may decrement supply counters
       // on the market. Sync both so the UI reflects the settlement right away.
-      void syncMarketAndPosition(marketAddress, walletAddress);
+      void hydratePositionCacheAfterTrade();
 
       onRedeemSuccess?.();
       onUpdate?.();
@@ -594,7 +616,16 @@ export function useMarketTrading(
       setTxStatus(`Error: ${message}`);
       showToast(`Redeem failed: ${message}`, { variant: "error", durationMs: 5000 });
     }
-  }, [wallet, walletAddress, marketAddress, send, onUpdate, onRedeemSuccess, showToast]);
+  }, [
+    wallet,
+    walletAddress,
+    marketAddress,
+    send,
+    onUpdate,
+    onRedeemSuccess,
+    showToast,
+    hydratePositionCacheAfterTrade,
+  ]);
 
   const canRedeem = useMemo(() => {
     if (status !== "connected" || !isResolved || !userPosition) return false;
@@ -641,6 +672,12 @@ export function useMarketTrading(
     [estimatedExitLamports, netInvestedLamports],
   );
 
+  const isCostBasisIncomplete = useMemo(() => {
+    if (!userPosition) return false;
+    const hasShares = userPosition.yesShares > 0n || userPosition.noShares > 0n;
+    return hasShares && netInvestedLamports === 0n;
+  }, [userPosition, netInvestedLamports]);
+
   return {
     wallet,
     status,
@@ -676,6 +713,7 @@ export function useMarketTrading(
     netInvestedLamports,
     realizedPnlLamports,
     unrealizedPnlLamports,
+    isCostBasisIncomplete,
     isProfileComplete,
   };
 }

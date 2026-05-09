@@ -87,6 +87,7 @@ function MarketDetailBody({
     netInvestedLamports,
     realizedPnlLamports,
     unrealizedPnlLamports,
+    isCostBasisIncomplete,
     isProfileComplete,
     tradeMaxSlippageBps,
     setTradeMaxSlippageBps,
@@ -464,6 +465,14 @@ function MarketDetailBody({
                           </p>
                         </div>
                       </div>
+                      {isCostBasisIncomplete && (
+                        <p className="text-[10px] text-amber-text/90 leading-snug rounded-md bg-amber-muted/30 border border-amber/20 px-2 py-1.5">
+                          Invested and unrealized require cost basis recorded after trades (Supabase{" "}
+                          <code className="text-[10px]">position_metrics</code>). If invested stays zero,
+                          check env keys and migrations — until then unrealized equals exit value, not true
+                          profit.
+                        </p>
+                      )}
                       {userPosition.yesShares > 0n && (
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex flex-col">
