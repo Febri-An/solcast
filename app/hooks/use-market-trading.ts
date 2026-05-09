@@ -391,7 +391,7 @@ export function useMarketTrading(
             noShares: quote.newNoShares,
           });
           const txSignature = typeof sendResult === "string" ? sendResult : undefined;
-          void recordPositionFill({
+          await recordPositionFill({
             clientFillId: crypto.randomUUID(),
             txSignature,
             wallet: walletAddress,
@@ -400,7 +400,7 @@ export function useMarketTrading(
             sharesDelta: quote.out,
             lamportsDelta: amount,
           });
-          void hydratePositionCacheAfterTrade();
+          await hydratePositionCacheAfterTrade();
           setTradeAmount("");
           setTxStatus(null);
           showToast(`Buy executed: received ${quote.out.toString()} shares.`);
@@ -511,7 +511,7 @@ export function useMarketTrading(
             noShares: quote.newNoShares,
           });
           const txSignature = typeof sendResult === "string" ? sendResult : undefined;
-          void recordPositionFill({
+          await recordPositionFill({
             clientFillId: crypto.randomUUID(),
             txSignature,
             wallet: walletAddress,
@@ -520,7 +520,7 @@ export function useMarketTrading(
             sharesDelta: sharesIn,
             lamportsDelta: quote.out,
           });
-          void hydratePositionCacheAfterTrade();
+          await hydratePositionCacheAfterTrade();
           setTxStatus(null);
           showToast(`Sell executed: received ${quote.out.toString()} lamports.`);
           onTradeSuccess?.();
@@ -657,26 +657,44 @@ export function useMarketTrading(
     return isTradeError(q) ? 0n : q.out;
   }, [userPosition, yesShares, noShares]);
 
-  const netInvestedLamports = useMemo(
+  /** Raw cost basis from Supabase (can briefly lag on-chain share counts). */
+  const rawNetInvestedLamports = useMemo(
     () => yesCostBasisLamports + noCostBasisLamports,
     [yesCostBasisLamports, noCostBasisLamports],
   );
+
+  const hasOpenShares = useMemo(() => {
+    if (!userPosition) return false;
+    return userPosition.yesShares > 0n || userPosition.noShares > 0n;
+  }, [userPosition]);
+
+  const netInvestedLamports = useMemo(() => {
+    if (!hasOpenShares) return 0n;
+    return rawNetInvestedLamports;
+  }, [hasOpenShares, rawNetInvestedLamports]);
 
   const estimatedExitLamports = useMemo(
     () => estimatedYesExitLamports + estimatedNoExitLamports,
     [estimatedYesExitLamports, estimatedNoExitLamports],
   );
 
-  const unrealizedPnlLamports = useMemo(
-    () => estimatedExitLamports - netInvestedLamports,
-    [estimatedExitLamports, netInvestedLamports],
-  );
+  const unrealizedPnlLamports = useMemo(() => {
+    if (!hasOpenShares) return 0n;
+    // Until Supabase cost basis catches `recordPositionFill`, don't treat exit value as PnL.
+    if (rawNetInvestedLamports === 0n) return 0n;
+    return estimatedExitLamports - netInvestedLamports;
+  }, [
+    hasOpenShares,
+    rawNetInvestedLamports,
+    estimatedExitLamports,
+    netInvestedLamports,
+  ]);
 
   const isCostBasisIncomplete = useMemo(() => {
     if (!userPosition) return false;
     const hasShares = userPosition.yesShares > 0n || userPosition.noShares > 0n;
-    return hasShares && netInvestedLamports === 0n;
-  }, [userPosition, netInvestedLamports]);
+    return hasShares && rawNetInvestedLamports === 0n;
+  }, [userPosition, rawNetInvestedLamports]);
 
   return {
     wallet,

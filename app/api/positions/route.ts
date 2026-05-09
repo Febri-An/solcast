@@ -34,10 +34,19 @@ export async function GET(request: Request) {
       positions.some((p) => p.marketAddress === m.address),
     );
 
+    const marketsJson = relevantMarkets.map((m) => ({
+      address: m.address,
+      accountDataBase64: m.accountDataBase64,
+      vaultLamports:
+        m.vaultLamports === undefined || m.vaultLamports === null
+          ? null
+          : m.vaultLamports.toString(),
+    }));
+
     return NextResponse.json({
       source: "cache",
       positions,
-      markets: relevantMarkets,
+      markets: marketsJson,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to load positions from cache";

@@ -24,6 +24,7 @@ import {
   getUserPositionDecoder,
   type UserPosition,
 } from "../generated/prediction_market/accounts/userPosition";
+import { vaultLamportsFromDb } from "../lib/markets-cache";
 import { getBrowserSupabase, isBrowserSupabaseConfigured } from "../lib/supabase/browser";
 
 export interface PositionWithAddress {
@@ -70,6 +71,7 @@ function decodeMarketBase64(b64: string): Market | null {
 export interface UsePositionsRealtimeResult {
   positions: PositionWithAddress[];
   markets: Map<string, Market>;
+  marketVaults: Map<string, bigint | null>;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -83,11 +85,13 @@ export function usePositionsRealtime(
 ): UsePositionsRealtimeResult {
   const [positions, setPositions] = useState<PositionWithAddress[]>([]);
   const [markets, setMarkets] = useState<Map<string, Market>>(new Map());
+  const [marketVaults, setMarketVaults] = useState<Map<string, bigint | null>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const positionsRef = useRef<Map<string, PositionWithAddress>>(new Map());
   const marketsRef = useRef<Map<string, Market>>(new Map());
+  const marketVaultsRef = useRef<Map<string, bigint | null>>(new Map());
 
   const commitPositions = useCallback(() => {
     setPositions(Array.from(positionsRef.current.values()));
@@ -97,12 +101,18 @@ export function usePositionsRealtime(
     setMarkets(new Map(marketsRef.current));
   }, []);
 
+  const commitVaults = useCallback(() => {
+    setMarketVaults(new Map(marketVaultsRef.current));
+  }, []);
+
   const snapshot = useCallback(async () => {
     if (!wallet) {
       positionsRef.current = new Map();
       marketsRef.current = new Map();
+      marketVaultsRef.current = new Map();
       commitPositions();
       commitMarkets();
+      commitVaults();
       setLoading(false);
       return;
     }
@@ -128,26 +138,31 @@ export function usePositionsRealtime(
         }
 
         const nextMarkets = new Map<string, Market>();
+        const nextVaults = new Map<string, bigint | null>();
         if (marketAddresses.size > 0) {
           const { data: marketRows, error: mErr } = await supabase
             .from("markets_cache")
-            .select("address, account_data_base64")
+            .select("address, account_data_base64, vault_lamports")
             .in("address", Array.from(marketAddresses));
           if (mErr) throw mErr;
 
           for (const row of (marketRows ?? []) as Array<{
             address: string;
             account_data_base64: string;
+            vault_lamports?: unknown;
           }>) {
             const m = decodeMarketBase64(row.account_data_base64);
             if (m) nextMarkets.set(row.address, m);
+            nextVaults.set(row.address, vaultLamportsFromDb(row.vault_lamports));
           }
         }
 
         positionsRef.current = nextPositions;
         marketsRef.current = nextMarkets;
+        marketVaultsRef.current = nextVaults;
         commitPositions();
         commitMarkets();
+        commitVaults();
       } else {
         // Fallback: REST endpoint returns positions + relevant markets.
         const response = await fetch(
@@ -161,7 +176,11 @@ export function usePositionsRealtime(
             marketAddress: string;
             accountDataBase64: string;
           }>;
-          markets: Array<{ address: string; accountDataBase64: string }>;
+          markets: Array<{
+            address: string;
+            accountDataBase64: string;
+            vaultLamports?: string | null;
+          }>;
         };
 
         const nextPositions = new Map<string, PositionWithAddress>();
@@ -176,15 +195,19 @@ export function usePositionsRealtime(
         }
 
         const nextMarkets = new Map<string, Market>();
+        const nextVaults = new Map<string, bigint | null>();
         for (const m of payload.markets ?? []) {
           const decoded = decodeMarketBase64(m.accountDataBase64);
           if (decoded) nextMarkets.set(m.address, decoded);
+          nextVaults.set(m.address, vaultLamportsFromDb(m.vaultLamports));
         }
 
         positionsRef.current = nextPositions;
         marketsRef.current = nextMarkets;
+        marketVaultsRef.current = nextVaults;
         commitPositions();
         commitMarkets();
+        commitVaults();
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load positions";
@@ -193,7 +216,7 @@ export function usePositionsRealtime(
     } finally {
       setLoading(false);
     }
-  }, [wallet, commitPositions, commitMarkets]);
+  }, [wallet, commitPositions, commitMarkets, commitVaults]);
 
   useEffect(() => {
     setLoading(true);
@@ -261,19 +284,24 @@ export function usePositionsRealtime(
             const old = payload.old as { address?: string } | null;
             if (old?.address) {
               marketsRef.current.delete(old.address);
+              marketVaultsRef.current.delete(old.address);
               commitMarkets();
+              commitVaults();
             }
             return;
           }
           const row = payload.new as {
             address: string;
             account_data_base64: string;
+            vault_lamports?: unknown;
           } | null;
           if (!row) return;
           // Only track markets we care about (referenced by one of our positions).
           const positionsArr = Array.from(positionsRef.current.values());
           const isRelevant = positionsArr.some((p) => p.marketAddress === row.address);
           if (!isRelevant) return;
+          marketVaultsRef.current.set(row.address, vaultLamportsFromDb(row.vault_lamports));
+          commitVaults();
           const decoded = decodeMarketBase64(row.account_data_base64);
           if (decoded) {
             marketsRef.current.set(row.address, decoded);
@@ -287,9 +315,9 @@ export function usePositionsRealtime(
       void supabase.removeChannel(positionsChannel);
       void supabase.removeChannel(marketsChannel);
     };
-  }, [wallet, snapshot, commitPositions, commitMarkets]);
+  }, [wallet, snapshot, commitPositions, commitMarkets, commitVaults]);
 
-  return { positions, markets, loading, error, refresh: snapshot };
+  return { positions, markets, marketVaults, loading, error, refresh: snapshot };
 }
 
 /**
