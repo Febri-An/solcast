@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -23,7 +23,6 @@ import {
 } from "../lib/market-format";
 import { getAssetBrandName, getAssetIconSrc } from "../lib/price-feeds";
 import { ProbabilityPercent } from "./probability-percent";
-import { useToast } from "./toast";
 
 interface MarketCardProps {
   market: Market;
@@ -202,13 +201,8 @@ export function MarketCard({
 }: MarketCardProps): ReactNode {
   const { status } = useWalletConnection();
   const { openProfileModal, configured: profileConfigured } = useProfile();
-  const { showToast } = useToast();
   const [bookmarked, setBookmarked] = useState(false);
   const [initialNowSec] = useState(() => Date.now() / 1000);
-
-  const handleRedeemSuccess = useCallback(() => {
-    showToast("Winnings redeemed successfully.");
-  }, [showToast]);
 
   const {
     isSending,
@@ -225,9 +219,7 @@ export function MarketCard({
     canRedeem,
     redeemPayout,
     isProfileComplete,
-  } = useMarketTrading(market, marketAddress, onUpdate, {
-    onRedeemSuccess: handleRedeemSuccess,
-  });
+  } = useMarketTrading(market, marketAddress, onUpdate);
 
   const canTrade =
     canTradeMarket && status === "connected" && (!profileConfigured || isProfileComplete);

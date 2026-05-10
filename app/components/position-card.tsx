@@ -10,6 +10,7 @@ import { useToast } from "./toast";
 import { type Market } from "../generated/prediction_market/accounts/market";
 import { type UserPosition } from "../generated/prediction_market/accounts/userPosition";
 import { formatMarketVaultSolDisplay } from "../lib/market-format";
+import { syncPositionCacheAfterTx } from "../lib/write-through";
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 
@@ -107,10 +108,15 @@ export function PositionCard({
         market: marketAddress,
       });
 
-      await send({ instructions: [instruction] });
+      await send({ instructions: [instruction] }, { commitment: "confirmed" });
+
+      const addr = String(wallet.account.address);
+      await syncPositionCacheAfterTx(String(marketAddress), addr, async () => {
+        await onUpdate?.();
+      });
+
       setTxStatus(null);
       showToast("Winnings redeemed successfully.");
-      onUpdate?.();
     } catch (err) {
       console.error("Redeem failed:", err);
       const message = err instanceof Error ? err.message : "Unknown error";

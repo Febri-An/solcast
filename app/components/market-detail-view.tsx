@@ -62,10 +62,6 @@ function MarketDetailBody({
     showToast("Trade executed successfully.");
   }, [showToast]);
 
-  const handleRedeemSuccess = useCallback(() => {
-    showToast("Winnings redeemed successfully.");
-  }, [showToast]);
-
   const {
     isSending,
     tradeAmount,
@@ -97,7 +93,6 @@ function MarketDetailBody({
     setTradeMaxSlippageBps,
   } = useMarketTrading(market, marketAddress, onRefresh, {
     onTradeSuccess: handleTradeSuccess,
-    onRedeemSuccess: handleRedeemSuccess,
   });
 
   const canTrade =

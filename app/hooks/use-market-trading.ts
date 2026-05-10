@@ -27,8 +27,8 @@ import { LAMPORTS_PER_SOL } from "../lib/market-format";
 import {
   fetchPositionMetrics,
   recordPositionFill,
-  syncMarketAndPosition,
   syncMarketRow,
+  syncPositionCacheAfterTx,
 } from "../lib/write-through";
 import { useToast } from "../components/toast";
 import { useProfile } from "./use-profile";
@@ -228,16 +228,7 @@ export function useMarketTrading(
   const hydratePositionCacheAfterTrade = useCallback(async () => {
     const w = walletAddress ?? "";
     if (!w) return;
-    await syncMarketAndPosition(String(marketAddress), w);
-    const backoffMs = [0, 280, 650, 1200];
-    for (let i = 0; i < backoffMs.length; i++) {
-      if (backoffMs[i] > 0) {
-        await new Promise<void>((resolve) =>
-          setTimeout(resolve, backoffMs[i]),
-        );
-      }
-      await refreshCachedUserPosition();
-    }
+    await syncPositionCacheAfterTx(String(marketAddress), w, refreshCachedUserPosition);
     await refreshPositionMetrics();
   }, [
     walletAddress,
@@ -600,13 +591,12 @@ export function useMarketTrading(
         market: marketAddress,
       });
 
-      await send({ instructions: [instruction] });
+      await send({ instructions: [instruction] }, { commitment: "confirmed" });
+
+      await hydratePositionCacheAfterTrade();
+
       setTxStatus(null);
       showToast("Winnings redeemed successfully.");
-
-      // Redeem zeroes the winning shares and may decrement supply counters
-      // on the market. Sync both so the UI reflects the settlement right away.
-      void hydratePositionCacheAfterTrade();
 
       onRedeemSuccess?.();
       onUpdate?.();
