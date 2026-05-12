@@ -50,6 +50,23 @@ export async function syncMarketAndPosition(
   ]);
 }
 
+const POSITION_CACHE_REFRESH_BACKOFF_MS = [0, 280, 650, 1200] as const;
+
+/** Sync RPC → Supabase, then retry `refresh` (read path can briefly lag write-through). */
+export async function syncPositionCacheAfterTx(
+  marketAddress: string,
+  walletAddress: string,
+  refresh: () => Promise<void>,
+): Promise<void> {
+  await syncMarketAndPosition(marketAddress, walletAddress);
+  for (const delayMs of POSITION_CACHE_REFRESH_BACKOFF_MS) {
+    if (delayMs > 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    }
+    await refresh();
+  }
+}
+
 export interface PositionFillInput {
   clientFillId: string;
   txSignature?: string;
