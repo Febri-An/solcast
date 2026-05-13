@@ -22,6 +22,7 @@ import {
 import {
   formatMarketTargetUsd,
   formatMarketVaultSolDisplay,
+  formatRedeemSol,
   formatSol,
   isShortLiveWindowMarket,
   marketTargetUsdAsNumber,
@@ -591,7 +592,7 @@ function MarketDetailBody({
                   disabled={isSending}
                   className="w-full rounded-xl bg-green py-3 text-sm font-bold text-white transition-colors hover:bg-green/80 disabled:opacity-40"
                 >
-                  {isSending ? "Redeeming…" : `Redeem ${formatSol(redeemPayout)} SOL`}
+                  {isSending ? "Redeeming…" : `Redeem ${formatRedeemSol(redeemPayout)} SOL`}
                 </button>
               )}
 

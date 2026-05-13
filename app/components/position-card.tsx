@@ -6,10 +6,12 @@ import { type Address } from "@solana/kit";
 import { useSendTransaction, useWalletConnection } from "@solana/react-hooks";
 
 import { getRedeemInstructionAsync } from "../generated/prediction_market";
+import { assertSignatureSucceeded, signatureToBase58 } from "../lib/confirm-signature";
+import { getWeb3Connection } from "../lib/solana-compat";
 import { useToast } from "./toast";
 import { type Market } from "../generated/prediction_market/accounts/market";
 import { type UserPosition } from "../generated/prediction_market/accounts/userPosition";
-import { formatMarketVaultSolDisplay } from "../lib/market-format";
+import { formatMarketVaultSolDisplay, formatRedeemSol } from "../lib/market-format";
 import { syncPositionCacheAfterTx } from "../lib/write-through";
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
@@ -108,15 +110,24 @@ export function PositionCard({
         market: marketAddress,
       });
 
-      await send({ instructions: [instruction] }, { commitment: "confirmed" });
+      const sendResult = await send({ instructions: [instruction] }, { commitment: "confirmed" });
+      const sig = signatureToBase58(sendResult);
+      await assertSignatureSucceeded(getWeb3Connection(), sig);
 
       const addr = String(wallet.account.address);
-      await syncPositionCacheAfterTx(String(marketAddress), addr, async () => {
+      const { positionOk } = await syncPositionCacheAfterTx(String(marketAddress), addr, async () => {
         await onUpdate?.();
       });
 
       setTxStatus(null);
-      showToast("Winnings redeemed successfully.");
+      if (positionOk) {
+        showToast("Winnings redeemed successfully.");
+      } else {
+        showToast(
+          "Redeem confirmed on-chain; position cache is still updating. Refresh in a few seconds if balances look wrong.",
+          { variant: "info", durationMs: 8000 },
+        );
+      }
     } catch (err) {
       console.error("Redeem failed:", err);
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -209,7 +220,7 @@ export function PositionCard({
                   <span>
                     Redeemable:{" "}
                     <span className="font-mono font-medium text-green-text">
-                      {formatSol(redeemable.payout)} SOL
+                      {formatRedeemSol(redeemable.payout)} SOL
                     </span>
                   </span>
                 </>
@@ -226,7 +237,7 @@ export function PositionCard({
             disabled={isSending}
             className="w-full rounded-xl bg-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green/80 disabled:opacity-50"
           >
-            {isSending ? "Redeeming..." : `Redeem ${formatSol(redeemable.payout)} SOL`}
+            {isSending ? "Redeeming..." : `Redeem ${formatRedeemSol(redeemable.payout)} SOL`}
           </button>
         </div>
       )}

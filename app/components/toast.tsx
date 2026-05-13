@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type ToastVariant = "success" | "error" | "loading";
+export type ToastVariant = "success" | "error" | "loading" | "info";
 
 interface ToastState {
   message: string;
@@ -77,6 +77,25 @@ function AlertCircleIcon(): ReactNode {
   );
 }
 
+function InfoCircleIcon(): ReactNode {
+  return (
+    <svg
+      className="h-5 w-5 shrink-0 text-amber"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 16v-4m0-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
+    </svg>
+  );
+}
+
 function LoadingIcon(): ReactNode {
   return (
     <svg
@@ -127,6 +146,7 @@ export function ToastProvider({ children }: ToastProviderProps): ReactNode {
 
   const isSuccess = toast?.variant === "success";
   const isLoading = toast?.variant === "loading";
+  const isInfo = toast?.variant === "info";
 
   return (
     <ToastContext.Provider value={{ showToast }}>
@@ -136,10 +156,24 @@ export function ToastProvider({ children }: ToastProviderProps): ReactNode {
           role="status"
           aria-live="polite"
           className={`pointer-events-none fixed bottom-6 left-1/2 z-[60] flex max-w-[min(100vw-2rem,22rem)] -translate-x-1/2 items-center gap-2.5 rounded-xl border bg-bg2 px-4 py-3 text-sm font-medium text-foreground shadow-lg shadow-black/40 animate-fade-in ${
-            isLoading ? "border-primary/25" : isSuccess ? "border-green/25" : "border-red/25"
+            isLoading
+              ? "border-primary/25"
+              : isSuccess
+                ? "border-green/25"
+                : isInfo
+                  ? "border-amber/25"
+                  : "border-red/25"
           }`}
         >
-          {isLoading ? <LoadingIcon /> : isSuccess ? <CheckCircleIcon /> : <AlertCircleIcon />}
+          {isLoading ? (
+            <LoadingIcon />
+          ) : isSuccess ? (
+            <CheckCircleIcon />
+          ) : isInfo ? (
+            <InfoCircleIcon />
+          ) : (
+            <AlertCircleIcon />
+          )}
           <span>{toast.message}</span>
         </div>
       )}

@@ -6,6 +6,13 @@ export function formatSol(lamports: bigint): string {
   return sol.toFixed(2);
 }
 
+/** Redeem / claim labels: extra precision below 0.1 SOL so nearby amounts don't look identical. */
+export function formatRedeemSol(lamports: bigint): string {
+  const sol = Number(lamports) / Number(LAMPORTS_PER_SOL);
+  if (sol < 0.1) return sol.toFixed(4);
+  return sol.toFixed(2);
+}
+
 export function formatVolume(lamports: bigint): string {
   const sol = Number(lamports) / Number(LAMPORTS_PER_SOL);
   if (sol >= 1000) return `${(sol / 1000).toFixed(1)}K`;
