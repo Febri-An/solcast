@@ -11,7 +11,7 @@ import { getWeb3Connection } from "../lib/solana-compat";
 import { useToast } from "./toast";
 import { type Market } from "../generated/prediction_market/accounts/market";
 import { type UserPosition } from "../generated/prediction_market/accounts/userPosition";
-import { formatMarketVaultSolDisplay } from "../lib/market-format";
+import { formatMarketVaultSolDisplay, formatRedeemSol } from "../lib/market-format";
 import { syncPositionCacheAfterTx } from "../lib/write-through";
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
@@ -220,7 +220,7 @@ export function PositionCard({
                   <span>
                     Redeemable:{" "}
                     <span className="font-mono font-medium text-green-text">
-                      {formatSol(redeemable.payout)} SOL
+                      {formatRedeemSol(redeemable.payout)} SOL
                     </span>
                   </span>
                 </>
@@ -237,7 +237,7 @@ export function PositionCard({
             disabled={isSending}
             className="w-full rounded-xl bg-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green/80 disabled:opacity-50"
           >
-            {isSending ? "Redeeming..." : `Redeem ${formatSol(redeemable.payout)} SOL`}
+            {isSending ? "Redeeming..." : `Redeem ${formatRedeemSol(redeemable.payout)} SOL`}
           </button>
         </div>
       )}

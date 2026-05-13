@@ -18,7 +18,7 @@ import {
 } from "../hooks/use-resolution-countdown";
 import {
   formatMarketVaultSolDisplay,
-  formatSol,
+  formatRedeemSol,
   isShortLiveWindowMarket,
 } from "../lib/market-format";
 import { getAssetBrandName, getAssetIconSrc } from "../lib/price-feeds";
@@ -548,7 +548,7 @@ export function MarketCard({
               disabled={isSending}
               className="rounded-lg bg-green-muted text-green-text px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-green/20 disabled:opacity-40"
             >
-              {isSending ? "Claiming..." : `Claim ${formatSol(redeemPayout)}`}
+              {isSending ? "Claiming..." : `Claim ${formatRedeemSol(redeemPayout)}`}
             </button>
           )}
 
