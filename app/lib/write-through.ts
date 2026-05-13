@@ -12,30 +12,44 @@
  * to `void` them or show a spinner.
  */
 
-export async function syncMarketRow(address: string): Promise<void> {
+export async function syncMarketRow(address: string): Promise<boolean> {
   try {
-    await fetch("/api/markets/sync-one", {
+    const res = await fetch("/api/markets/sync-one", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ address }),
     });
+    if (!res.ok) {
+      console.warn("[write-through] market sync-one HTTP", res.status);
+      return false;
+    }
+    const body = (await res.json()) as { ok?: boolean };
+    return body.ok !== false;
   } catch (err) {
     console.warn("[write-through] market sync-one failed:", err);
+    return false;
   }
 }
 
 export async function syncPositionRow(
   wallet: string,
   market: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
-    await fetch("/api/positions/sync-one", {
+    const res = await fetch("/api/positions/sync-one", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ wallet, market }),
     });
+    if (!res.ok) {
+      console.warn("[write-through] position sync-one HTTP", res.status);
+      return false;
+    }
+    const body = (await res.json()) as { ok?: boolean };
+    return body.ok !== false;
   } catch (err) {
     console.warn("[write-through] position sync-one failed:", err);
+    return false;
   }
 }
 
@@ -43,11 +57,12 @@ export async function syncPositionRow(
 export async function syncMarketAndPosition(
   marketAddress: string,
   walletAddress: string,
-): Promise<void> {
-  await Promise.all([
+): Promise<{ marketOk: boolean; positionOk: boolean }> {
+  const [marketOk, positionOk] = await Promise.all([
     syncMarketRow(marketAddress),
     syncPositionRow(walletAddress, marketAddress),
   ]);
+  return { marketOk, positionOk };
 }
 
 const POSITION_CACHE_REFRESH_BACKOFF_MS = [0, 280, 650, 1200] as const;
@@ -57,14 +72,15 @@ export async function syncPositionCacheAfterTx(
   marketAddress: string,
   walletAddress: string,
   refresh: () => Promise<void>,
-): Promise<void> {
-  await syncMarketAndPosition(marketAddress, walletAddress);
+): Promise<{ marketOk: boolean; positionOk: boolean }> {
+  const { marketOk, positionOk } = await syncMarketAndPosition(marketAddress, walletAddress);
   for (const delayMs of POSITION_CACHE_REFRESH_BACKOFF_MS) {
     if (delayMs > 0) {
       await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
     }
     await refresh();
   }
+  return { marketOk, positionOk };
 }
 
 export interface PositionFillInput {

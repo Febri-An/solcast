@@ -11,6 +11,7 @@ import {
   getSellInstructionAsync,
   type Market,
 } from "../generated/prediction_market";
+import { assertSignatureSucceeded, signatureToBase58 } from "../lib/confirm-signature";
 import { resolveMarketWithPyth } from "../lib/pyth";
 import { createAnchorWallet, getWeb3Connection } from "../lib/solana-compat";
 import {
@@ -227,9 +228,12 @@ export function useMarketTrading(
    */
   const hydratePositionCacheAfterTrade = useCallback(async () => {
     const w = walletAddress ?? "";
-    if (!w) return;
-    await syncPositionCacheAfterTx(String(marketAddress), w, refreshCachedUserPosition);
+    if (!w) {
+      return { marketOk: false, positionOk: false };
+    }
+    const sync = await syncPositionCacheAfterTx(String(marketAddress), w, refreshCachedUserPosition);
     await refreshPositionMetrics();
+    return sync;
   }, [
     walletAddress,
     marketAddress,
@@ -591,12 +595,21 @@ export function useMarketTrading(
         market: marketAddress,
       });
 
-      await send({ instructions: [instruction] }, { commitment: "confirmed" });
+      const sendResult = await send({ instructions: [instruction] }, { commitment: "confirmed" });
+      const sig = signatureToBase58(sendResult);
+      await assertSignatureSucceeded(getWeb3Connection(), sig);
 
-      await hydratePositionCacheAfterTrade();
+      const { positionOk } = await hydratePositionCacheAfterTrade();
 
       setTxStatus(null);
-      showToast("Winnings redeemed successfully.");
+      if (positionOk) {
+        showToast("Winnings redeemed successfully.");
+      } else {
+        showToast(
+          "Redeem confirmed on-chain; position cache is still updating. Refresh in a few seconds if balances look wrong.",
+          { variant: "info", durationMs: 8000 },
+        );
+      }
 
       onRedeemSuccess?.();
       onUpdate?.();

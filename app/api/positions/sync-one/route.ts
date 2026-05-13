@@ -21,6 +21,7 @@ function sleep(ms: number): Promise<void> {
 async function fetchAccountBase64(
   rpcUrl: string,
   address: string,
+  commitment: "confirmed" | "finalized" = "confirmed",
 ): Promise<string | null> {
   const response = await fetch(rpcUrl, {
     method: "POST",
@@ -29,7 +30,7 @@ async function fetchAccountBase64(
       jsonrpc: "2.0",
       id: 1,
       method: "getAccountInfo",
-      params: [address, { encoding: "base64", commitment: "confirmed" }],
+      params: [address, { encoding: "base64", commitment }],
     }),
   });
   const result = (await response.json()) as {
@@ -45,8 +46,9 @@ async function fetchAccountBase64(
  * Body: { wallet: string, market: string }
  *
  * Fetches the UserPosition PDA derived from (market, user), decodes it,
- * and upserts it into `positions_cache`. Deletes the cached row if the
- * account no longer exists on-chain (e.g. future position close).
+ * and upserts it into `positions_cache`. If RPC cannot read the account
+ * after retries, returns 503 and **does not** delete existing cache rows
+ * (avoids false "settled" UI after a transient RPC miss).
  *
  * Called by the frontend after a buy / sell / redeem succeeds so the
  * user's position in Supabase matches the chain within ~500 ms.
@@ -78,37 +80,48 @@ export async function POST(request: Request) {
       `[api/positions/sync-one] start market=${market} wallet=${wallet} pda=${positionAddress}`,
     );
 
-    let b64 = await fetchAccountBase64(SOLANA_RPC_URL, positionAddress);
+    let b64 = await fetchAccountBase64(SOLANA_RPC_URL, positionAddress, "confirmed");
     console.log(
       `[api/positions/sync-one] attempt=0 pda=${positionAddress} found=${Boolean(b64)}`,
     );
     for (const delayMs of RETRY_DELAYS_MS) {
       if (b64) break;
       await sleep(delayMs);
-      b64 = await fetchAccountBase64(SOLANA_RPC_URL, positionAddress);
+      b64 = await fetchAccountBase64(SOLANA_RPC_URL, positionAddress, "confirmed");
       console.log(
         `[api/positions/sync-one] retry delay_ms=${delayMs} pda=${positionAddress} found=${Boolean(b64)}`,
       );
     }
+    if (!b64) {
+      b64 = await fetchAccountBase64(SOLANA_RPC_URL, positionAddress, "finalized");
+      console.log(
+        `[api/positions/sync-one] finalized attempt=0 pda=${positionAddress} found=${Boolean(b64)}`,
+      );
+      for (const delayMs of RETRY_DELAYS_MS) {
+        if (b64) break;
+        await sleep(delayMs);
+        b64 = await fetchAccountBase64(SOLANA_RPC_URL, positionAddress, "finalized");
+        console.log(
+          `[api/positions/sync-one] finalized retry delay_ms=${delayMs} pda=${positionAddress} found=${Boolean(b64)}`,
+        );
+      }
+    }
 
     if (!b64) {
-      // No on-chain position (e.g. user never traded, or redeemed + account closed).
-      // Drop any stale cache row so the client realtime subscription sees it vanish.
+      // Do **not** delete `positions_cache` here. A transient RPC miss after a
+      // successful redeem used to wipe the row and made the UI show "settled"
+      // while lamports had not moved yet (or the user still had redeemable shares).
       console.warn(
-        `[api/positions/sync-one] no account after retries, delete cache row if any pda=${positionAddress}`,
+        `[api/positions/sync-one] account fetch still null after retries pda=${positionAddress} — leaving cache unchanged`,
       );
-      if (isSupabaseConfigured()) {
-        const supabase = createServiceSupabase();
-        await supabase
-          .from("positions_cache")
-          .delete()
-          .eq("address", positionAddress);
-      }
-      return NextResponse.json({
-        ok: true,
-        position: null,
-        address: positionAddress,
-      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "position_account_unavailable",
+          address: positionAddress,
+        },
+        { status: 503 },
+      );
     }
 
     // Decode to validate + denormalize market/user for filtered queries.
